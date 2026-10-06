@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keycard.local/schemas/quote.schema.json",
+  "title": "KeyCard x402 v2 ADA quote",
+  "description": "An exact-scheme Cardano Preprod quote bound to one proxy request. The x402 fields map to the v2 PaymentRequired accepts entry; KeyCard fields provide expiry and replay-safe request binding.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["x402Version", "quoteId", "listingId", "operationId", "requestId", "requestHash", "scheme", "network", "amount", "asset", "assetTransferMethod", "payTo", "maxTimeoutSeconds", "issuedAt", "expiresAt"],
+  "properties": {
+    "x402Version": { "const": 2 },
+    "quoteId": { "$ref": "common.schema.json#/$defs/id" },
+    "listingId": { "$ref": "common.schema.json#/$defs/id" },
+    "operationId": { "$ref": "common.schema.json#/$defs/id" },
+    "requestId": { "$ref": "common.schema.json#/$defs/id" },
+    "requestHash": { "$ref": "common.schema.json#/$defs/sha256", "description": "SHA-256 of the canonical method, proxy path, and request body for the one authorized call." },
+    "scheme": { "const": "exact" },
+    "network": { "$ref": "common.schema.json#/$defs/cardanoNetwork" },
+    "amount": { "$ref": "common.schema.json#/$defs/lovelaceAmount" },
+    "asset": { "const": "lovelace" },
+    "assetTransferMethod": { "const": "default" },
+    "payTo": { "$ref": "common.schema.json#/$defs/cardanoAddress" },
+    "maxTimeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+    "issuedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "expiresAt": { "$ref": "common.schema.json#/$defs/timestamp" }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keycard.local/schemas/payment.schema.json",
+  "title": "KeyCard payment record",
+  "description": "Payment evidence and server-side verification state for exactly one quote-bound request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["paymentId", "quoteId", "requestId", "requestHash", "network", "amount", "asset", "status", "evidence", "createdAt"],
+  "properties": {
+    "paymentId": { "$ref": "common.schema.json#/$defs/id" },
+    "quoteId": { "$ref": "common.schema.json#/$defs/id" },
+    "requestId": { "$ref": "common.schema.json#/$defs/id" },
+    "requestHash": { "$ref": "common.schema.json#/$defs/sha256" },
+    "network": { "$ref": "common.schema.json#/$defs/cardanoNetwork" },
+    "amount": { "$ref": "common.schema.json#/$defs/lovelaceAmount" },
+    "asset": { "const": "lovelace" },
+    "payerAddress": { "$ref": "common.schema.json#/$defs/cardanoAddress" },
+    "transactionId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-fA-F0-9]+$" },
+    "status": { "enum": ["submitted", "pending", "settled", "rejected", "expired"] },
+    "evidence": {
+      "oneOf": [
+        {
+          "title": "x402 PAYMENT-SIGNATURE header evidence",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "headerName", "headerValue"],
+          "properties": {
+            "source": { "const": "x402-header" },
+            "headerName": { "const": "PAYMENT-SIGNATURE" },
+            "headerValue": { "type": "string", "minLength": 1, "contentEncoding": "base64" }
+          }
+        },
+        {
+          "title": "Facilitator verification evidence",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "facilitatorId", "verified", "verifiedAt", "network", "transactionId"],
+          "properties": {
+            "source": { "const": "facilitator" },
+            "facilitatorId": { "$ref": "common.schema.json#/$defs/id" },
+            "verified": { "const": true },
+            "verifiedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "network": { "$ref": "common.schema.json#/$defs/cardanoNetwork" },
+            "transactionId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-fA-F0-9]+$" },
+            "attestation": { "type": "string", "minLength": 1, "contentEncoding": "base64" }
+          }
+        }
+      ]
+    },
+    "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "settledAt": { "$ref": "common.schema.json#/$defs/timestamp" }
+  }
+}

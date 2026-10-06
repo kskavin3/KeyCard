@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: keycard
+      POSTGRES_USER: keycard
+      POSTGRES_PASSWORD: keycard
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - keycard-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycard -d keycard"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  keycard-postgres:

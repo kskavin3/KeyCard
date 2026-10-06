@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keycard.local/schemas/sponsorship-offer.schema.json",
+  "title": "KeyCard sponsorship offer",
+  "description": "A one-time sponsor-funded offer reserved for one quote-bound API request and one adVault entry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["offerId", "campaignId", "listingId", "operationId", "quoteId", "requestId", "requestHash", "reservedAmount", "asset", "network", "snippet", "relevanceTags", "challenge", "issuedAt", "expiresAt"],
+  "properties": {
+    "offerId": { "$ref": "common.schema.json#/$defs/id" },
+    "campaignId": { "$ref": "common.schema.json#/$defs/id" },
+    "listingId": { "$ref": "common.schema.json#/$defs/id" },
+    "operationId": { "$ref": "common.schema.json#/$defs/id" },
+    "quoteId": { "$ref": "common.schema.json#/$defs/id" },
+    "requestId": { "$ref": "common.schema.json#/$defs/id" },
+    "requestHash": { "$ref": "common.schema.json#/$defs/sha256" },
+    "reservedAmount": { "$ref": "common.schema.json#/$defs/lovelaceAmount" },
+    "asset": { "const": "lovelace" },
+    "network": { "$ref": "common.schema.json#/$defs/cardanoNetwork" },
+    "snippet": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "relevanceTags": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 100 } },
+    "challenge": { "type": "string", "minLength": 16, "maxLength": 256, "description": "Cryptographically random, single-use redemption challenge; store its verifier securely." },
+    "issuedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "expiresAt": { "$ref": "common.schema.json#/$defs/timestamp" }
+  }
+}

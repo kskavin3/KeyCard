@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Provider dashboard · KeyCard</title>
+    <link rel="stylesheet" href="/provider/dashboard.css" />
+    <script type="module" src="/provider/dashboard.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/">KEYCARD<span> / PROVIDER</span></a>
+        <button id="sign-out" class="button quiet" hidden>Sign out</button>
+      </header>
+
+      <section id="sign-in-panel" class="panel narrow">
+        <p class="eyebrow">PROVIDER CONSOLE</p>
+        <h1>Manage your API listings.</h1>
+        <p class="muted">Sign in to register an upstream API, configure its paid operations, and check the proxy.</p>
+        <form id="sign-in-form" class="stack">
+          <label>Dashboard password<input name="password" type="password" autocomplete="current-password" required /></label>
+          <button class="button primary" type="submit">Sign in</button>
+        </form>
+      </section>
+
+      <section id="dashboard" hidden>
+        <div class="intro">
+          <p class="eyebrow">PROVIDER CONSOLE</p>
+          <h1 id="welcome">Your API listings.</h1>
+          <p class="muted">Credentials are encrypted at rest and only attached to server-side upstream requests.</p>
+        </div>
+
+        <div class="columns">
+          <section class="panel">
+            <p class="eyebrow">NEW OR UPDATED LISTING</p>
+            <h2>Register an API</h2>
+            <form id="listing-form" class="stack">
+              <div class="two-up">
+                <label>Listing ID <span class="muted">(optional)</span><input name="listingId" placeholder="weather-current" /></label>
+                <label>Listing name<input name="name" placeholder="Current weather" required /></label>
+              </div>
+              <label>Description<textarea name="description" rows="2" required placeholder="A short explanation of what this API returns."></textarea></label>
+              <label>Capabilities <span class="muted">(comma separated)</span><input name="capabilities" placeholder="weather, forecast" required /></label>
+              <label>Upstream HTTPS origin<input name="baseUrl" type="url" placeholder="https://api.example.com" required /></label>
+              <div class="three-up">
+                <label>Credential location<select name="authMode"><option value="header">HTTP header</option><option value="query">Query parameter</option></select></label>
+                <label>Header or parameter<input name="authField" placeholder="x-api-key" required /></label>
+                <label>Upstream API key<input name="secret" type="password" autocomplete="new-password" required /></label>
+              </div>
+              <div class="two-up">
+                <label>Operation ID<input name="operationId" placeholder="current-weather" required /></label>
+                <label>Operation name<input name="operationName" placeholder="Get current weather" required /></label>
+              </div>
+              <div class="three-up">
+                <label>Method<select name="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
+                <label>Upstream path<input name="path" value="/" required /></label>
+                <label>Provider cost (USD)<input name="cost" type="number" min="0.000001" step="0.000001" value="0.001" required /></label>
+              </div>
+              <label>Operation description<input name="operationDescription" placeholder="Returns current conditions for a location." required /></label>
+              <div class="two-up">
+                <label>Input JSON Schema<textarea name="inputSchema" rows="7" spellcheck="false">{"type":"object","properties":{},"additionalProperties":false}</textarea></label>
+                <label>Output JSON Schema<textarea name="outputSchema" rows="7" spellcheck="false">{"type":"object","additionalProperties":true}</textarea></label>
+              </div>
+              <button class="button primary" type="submit">Save listing</button>
+            </form>
+          </section>
+
+          <aside class="panel side-panel">
+            <p class="eyebrow">UPSTREAM CHECK</p>
+            <h2>Preview a call</h2>
+            <p class="muted small">This preview is provider-only and does not charge an agent. Use the saved listing and operation IDs.</p>
+            <form id="preview-form" class="stack">
+              <label>Listing ID<input name="listingId" required /></label>
+              <label>Operation ID<input name="operationId" required /></label>
+              <label>Input JSON<textarea name="input" rows="8" spellcheck="false">{}</textarea></label>
+              <button class="button" type="submit">Send preview</button>
+            </form>
+            <pre id="preview-result" class="result" hidden></pre>
+          </aside>
+        </div>
+
+        <section class="panel listing-panel">
+          <div class="section-heading"><div><p class="eyebrow">PAYMENTS</p><h2>Earnings and payouts</h2></div><button id="refresh-payments" class="button quiet">Refresh</button></div>
+          <p class="muted small">ADA goes directly to your payout address. Confirmed payments for failed calls require a full service refund; network fees remain with the network.</p>
+          <p id="earnings-summary" class="muted">Loading earnings…</p>
+          <div id="payment-list" class="listing-list"></div>
+        </section>
+
+        <section class="panel listing-panel">
+          <div class="section-heading"><div><p class="eyebrow">YOUR CATALOG</p><h2>Listings</h2></div><button id="refresh-listings" class="button quiet">Refresh</button></div>
+          <div id="listing-list" class="listing-list"><p class="muted">Loading listings…</p></div>
+        </section>
+      </section>
+      <div id="toast" role="status" aria-live="polite" hidden></div>
+    </main>
+  </body>
+</html>

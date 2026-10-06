@@ -4,12 +4,37 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "dev": "node scripts/dev.mjs",
+    "agent:wallet": "node scripts/agent-wallet.mjs",
+    "dev:client": "vite --host 127.0.0.1",
+    "dev:api": "tsx watch src/server/index.ts",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "npm run build:server && vite build",
+    "start:api": "node dist-server/index.js",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test"
+    "test": "node --import tsx --test",
+    "test:payments": "KEYCARD_TEST_DATABASE_URL=postgres://keycard:keycard@127.0.0.1:5433/keycard node --import tsx --test src/paid-calls.test.js src/provider-payments.test.js"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   },
   "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
     "vite": "^8.3.3"
+  },
+  "dependencies": {
+    "@scure/bip39": "2.4.0",
+    "@x402/cardano": "2.26.0",
+    "@x402/core": "2.26.0",
+    "@x402/express": "2.26.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "dotenv": "16.6.1",
+    "express": "5.2.1",
+    "pg": "8.23.1"
   }
 }

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keycard.local/schemas/common.schema.json",
+  "title": "KeyCard common schema definitions",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cardanoNetwork": {
+      "const": "cardano:preprod"
+    },
+    "cardanoAddress": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 120,
+      "pattern": "^(addr|addr_test)1[0-9a-z]+$"
+    },
+    "lovelaceAmount": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$",
+      "description": "Positive integer amount in lovelace; never use a JSON number for monetary values."
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "httpsUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    }
+  }
+}

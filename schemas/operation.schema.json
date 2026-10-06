@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keycard.local/schemas/operation.schema.json",
+  "title": "KeyCard API operation",
+  "description": "A public, fixed-price operation exposed through the KeyCard proxy. Schemas for inputs and outputs are themselves JSON Schemas.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operationId", "listingId", "name", "description", "method", "path", "inputSchema", "outputSchema", "pricing", "enabled"],
+  "properties": {
+    "operationId": { "$ref": "common.schema.json#/$defs/id" },
+    "listingId": { "$ref": "common.schema.json#/$defs/id" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "method": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+    "path": { "type": "string", "pattern": "^/", "maxLength": 2048 },
+    "inputSchema": { "$ref": "https://json-schema.org/draft/2020-12/schema" },
+    "outputSchema": { "$ref": "https://json-schema.org/draft/2020-12/schema" },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "priceUsdMicros", "markupBasisPoints"],
+      "properties": {
+        "model": { "const": "fixed-per-call" },
+        "priceUsdMicros": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "Final service price in USD micro-units, as a positive integer string." },
+        "markupBasisPoints": { "type": "integer", "minimum": 0, "maximum": 1000000 }
+      }
+    },
+    "enabled": { "type": "boolean" }
+  }
+}

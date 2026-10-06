@@ -10,7 +10,7 @@ Built at TOKEN2049 Origins.
 
 ## Project status
 
-This repository contains the KeyCard landing page, an interactive concept demo, and the product implementation roadmap. The provider dashboard, proxy, Cardano payment integration, agent skill, and sponsorship system described below are planned features. The landing page's demo uses illustrative data and does not make real API calls or payments.
+This repository contains the landing page, a provider console, registry, and Cardano Preprod x402 proxy. Paid calls now have durable quotes, receipts, timeout recovery, replay protection, provider earnings/refund tracking, and a local agent wallet client. PostgreSQL/HTTP integration tests pass with simulated payment services; a successful live Preprod call remains to be verified. Sponsorship and the landing page demo still use illustrative data.
 
 ### Run the landing page
 
@@ -31,7 +31,21 @@ npm run preview
 
 The page uses HTML, CSS, and vanilla JavaScript with Vite for development and production builds. Motion includes a layered card entrance, scroll reveals, a sticky three-stage walkthrough, and a page progress indicator, with support for reduced-motion preferences. The demo supports direct ADA payments and sponsored access using example data. Typography uses Google Fonts with local system fallbacks.
 
-The payment flow will follow the [x402 HTTP payment model](https://github.com/x402-foundation/x402/blob/main/specs/transports-v2/http.md). The Cardano payment adapter and adVault sponsorship flow require implementation and validation; this README does not imply compatibility with existing x402 clients yet.
+### Run the provider console and API
+
+Requires Node.js 20.19+ and Docker Compose. Set local secrets, start PostgreSQL, then start the Vite site and API:
+
+```sh
+cp .env.example .env
+openssl rand -hex 32     # use for KEYCARD_SESSION_SECRET
+openssl rand -base64 32  # use for KEYCARD_ENCRYPTION_KEY
+docker compose up -d postgres
+npm run dev
+```
+
+Set a private `KEYCARD_DASHBOARD_PASSWORD` in `.env` before starting. The console is served at `http://127.0.0.1:4020/provider/`; the landing page remains at Vite's printed address. The proxy supports provider-authenticated previews and payment-gated public calls. Configure payment settings before issuing quotes.
+
+See [paid-call setup, wallet commands, retry contract, and refund policy](docs/paid-calls.md). Run `npm run test:payments` for PostgreSQL integration coverage. The [agent skill](skills/keycard-agent/SKILL.md) covers wallet setup and paid-call instructions. Public calls require a stable secret `Idempotency-Key` alongside the x402 headers.
 
 ## Actors and parties involved
 
@@ -164,20 +178,20 @@ The proposed ad prompt injection is treated as **sponsored context**: the agent 
 
 ### Phase 1: Define the MVP
 
-- [ ] Choose the frontend, backend, database, and deployment stack.
-- [ ] Select a Cardano test network, wallet/signing tooling, and chain access provider.
-- [ ] Choose the x402 version and define the Cardano payment scheme, evidence format, and settlement policy.
-- [ ] Define schemas for API listings, operations, quotes, payments, sponsorship offers, and adVault entries.
-- [ ] Select one fixed-price upstream API for the first end-to-end demo.
-- [ ] Decide the exchange-rate source, quote expiry, markup rules, fee allocation, and provider payout model.
+- [x] Choose the frontend, backend, database, and deployment stack.
+- [x] Select a Cardano test network, wallet/signing tooling, and chain access provider.
+- [x] Choose the x402 version and define the Cardano payment scheme, evidence format, and settlement policy.
+- [x] Define schemas for API listings, operations, quotes, payments, sponsorship offers, and adVault entries.
+- [x] Select one fixed-price upstream API for the first end-to-end demo.
+- [x] Decide the exchange-rate source, quote expiry, markup rules, fee allocation, and provider payout model.
 
 ### Phase 2: Build provider registration and the proxy
 
-- [ ] Build provider sign-in and the API registration dashboard.
-- [ ] Add encrypted credential storage, credential rotation, and redaction from logs and responses.
-- [ ] Implement operation schemas, pricing configuration, and listing enable/disable controls.
-- [ ] Restrict proxy destinations and allowed operations; block access to internal network addresses.
-- [ ] Forward authorized calls with server-side credentials and handle upstream errors, timeouts, and rate limits.
+- [x] Build provider sign-in and the API registration dashboard.
+- [x] Add encrypted credential storage, credential rotation, and redaction from logs and responses.
+- [x] Implement operation schemas, pricing configuration, and listing enable/disable controls.
+- [x] Restrict proxy destinations and allowed operations; block access to internal network addresses.
+- [x] Forward authorized calls with server-side credentials and handle upstream errors, timeouts, and rate limits.
 
 ### Phase 3: Add ADA payments
 

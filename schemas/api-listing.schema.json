@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keycard.local/schemas/api-listing.schema.json",
+  "title": "KeyCard public API listing",
+  "description": "Public discovery record. Its closed shape intentionally excludes upstream URLs, credentials, and provider secrets.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["listingId", "providerId", "name", "description", "proxyUrl", "capabilities", "operationIds", "availability", "createdAt", "updatedAt"],
+  "properties": {
+    "listingId": { "$ref": "common.schema.json#/$defs/id" },
+    "providerId": { "$ref": "common.schema.json#/$defs/id" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "description": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "proxyUrl": { "type": "string", "format": "uri", "pattern": "^https?://" },
+    "capabilities": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 100 } },
+    "operationIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "common.schema.json#/$defs/id" } },
+    "availability": { "enum": ["available", "temporarily-unavailable", "disabled"] },
+    "createdAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" }
+  }
+}

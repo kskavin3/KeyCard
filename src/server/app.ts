@@ -1,0 +1,530 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { Ajv2020 } from 'ajv/dist/2020.js';
+import addFormatsPlugin from 'ajv-formats';
+import express, { type Request, type Response } from 'express';
+import { pool } from './db.js';
+import { clearProviderSession, createProviderSession, requireProviderSession, requireSameOrigin, verifyProviderPassword } from './auth.js';
+import { decryptCredential, encryptCredential } from './credentials.js';
+import { assertAllowedDestination, safeFetch } from './proxy-security.js';
+import { issueQuote, paymentGateway, verifyRefund } from './payments.js';
+import { createPaidHandler, PgCallStore, receipt, reconcileCall } from './paid-calls.js';
+
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+(addFormatsPlugin as unknown as (instance: Ajv2020) => void)(ajv);
+
+const [commonSchema, listingSchema, operationSchema] = await Promise.all([
+  readFile(resolve(process.cwd(), 'schemas/common.schema.json'), 'utf8').then(JSON.parse),
+  readFile(resolve(process.cwd(), 'schemas/api-listing.schema.json'), 'utf8').then(JSON.parse),
+  readFile(resolve(process.cwd(), 'schemas/operation.schema.json'), 'utf8').then(JSON.parse),
+]);
+ajv.addSchema(commonSchema);
+const validateListing = ajv.compile(listingSchema);
+const validateOperation = ajv.compile(operationSchema);
+
+type OperationInput = {
+  operationId?: string;
+  name: string;
+  description: string;
+  method: string;
+  path: string;
+  inputSchema: Record<string, unknown>;
+  outputSchema: Record<string, unknown>;
+  priceUsdMicros: string;
+  markupBasisPoints?: number;
+  enabled?: boolean;
+};
+
+type ListingInput = {
+  listingId?: string;
+  name: string;
+  description: string;
+  capabilities: string[];
+};
+
+const app = express();
+app.disable('x-powered-by');
+app.use(express.json({ limit: '256kb' }));
+app.use('/provider', express.static(resolve(process.cwd(), 'public/provider'), { index: 'index.html' }));
+
+const publicOrigin = process.env.KEYCARD_PUBLIC_ORIGIN ?? 'http://localhost:4020';
+const providerId = process.env.KEYCARD_PROVIDER_ID ?? 'provider-demo';
+const providerName = process.env.KEYCARD_PROVIDER_NAME ?? 'KeyCard Demo Provider';
+
+function invalid(message: string) {
+  const error = new Error(message);
+  Object.assign(error, { status: 400 });
+  return error;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
+}
+
+function positiveIntegerString(value: unknown): value is string {
+  return typeof value === 'string' && /^[1-9][0-9]{0,23}$/.test(value);
+}
+
+function servicePriceUsdMicros(cost: string, markupBasisPoints: number) {
+  const numerator = BigInt(cost) * BigInt(10_000 + markupBasisPoints);
+  return ((numerator + 9_999n) / 10_000n).toString();
+}
+
+function safePublicListing(row: any, operations: any[]) {
+  const listing = {
+    listingId: row.listing_id,
+    providerId: row.provider_id,
+    name: row.name,
+    description: row.description,
+    proxyUrl: `${publicOrigin}/api/proxy/${encodeURIComponent(row.listing_id)}`,
+    capabilities: row.capabilities,
+    operationIds: operations.map(operation => operation.operationId),
+    availability: row.availability,
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+  };
+  if (!validateListing(listing)) throw new Error('Stored listing failed its public schema.');
+  return listing;
+}
+
+function safePublicOperation(row: any) {
+  const operation = {
+    operationId: row.operation_id,
+    listingId: row.listing_id,
+    name: row.name,
+    description: row.description,
+    method: row.method,
+    path: row.path,
+    inputSchema: row.input_schema,
+    outputSchema: row.output_schema,
+    pricing: {
+      model: 'fixed-per-call',
+      priceUsdMicros: servicePriceUsdMicros(String(row.price_usd_micros), row.markup_basis_points),
+      markupBasisPoints: row.markup_basis_points,
+    },
+    enabled: row.enabled,
+  };
+  if (!validateOperation(operation)) throw new Error('Stored operation failed its public schema.');
+  return operation;
+}
+
+async function getListingOperations(listingId: string, onlyEnabled = false) {
+  const result = await pool.query(
+    `SELECT * FROM api_operations WHERE listing_id = $1 ${onlyEnabled ? 'AND enabled = TRUE' : ''} ORDER BY operation_id`,
+    [listingId],
+  );
+  return result.rows;
+}
+
+async function forwardUpstream(listingId: string, operationId: string, req: Request, preview = false) {
+  const result = await pool.query(
+    `SELECT l.listing_id, l.provider_id, l.availability,
+            u.base_url, u.allowed_hosts, u.request_timeout_ms,
+            c.auth_mode, c.auth_field, c.encrypted_secret, c.nonce, c.auth_tag,
+            o.operation_id, o.method, o.path, o.input_schema, o.output_schema, o.enabled
+       FROM api_listings l
+       JOIN upstream_configs u USING (listing_id)
+       JOIN api_credentials c USING (listing_id)
+       JOIN api_operations o USING (listing_id)
+      WHERE l.listing_id = $1 AND o.operation_id = $2`,
+    [listingId, operationId],
+  );
+  const row = result.rows[0];
+  if (!row || row.provider_id !== providerId) throw Object.assign(new Error('Listing not found.'), { status: 404 });
+  if (row.availability !== 'available' || !row.enabled) throw Object.assign(new Error('Operation is unavailable.'), { status: 409 });
+  if (!preview && req.method !== row.method) throw Object.assign(new Error(`Use ${row.method} for this operation.`), { status: 405 });
+
+  const input = preview ? (req.body ?? {}) : (row.method === 'GET' || row.method === 'DELETE' ? req.query : (req.body ?? {}));
+  const validateInput = ajv.compile(row.input_schema);
+  if (!validateInput(input)) throw Object.assign(new Error('Request does not match the operation input schema.'), { status: 400 });
+
+  const baseUrl = new URL(row.base_url);
+  const destination = new URL(row.path, baseUrl);
+  const credential = decryptCredential(row);
+  const headers: Record<string, string> = { accept: 'application/json' };
+  if (row.auth_mode === 'header') headers[row.auth_field] = credential;
+  if (!['GET', 'DELETE'].includes(row.method)) headers['content-type'] = 'application/json';
+
+  const queryOrBody = input as Record<string, unknown>;
+  if (row.method === 'GET' || row.method === 'DELETE') {
+    for (const [key, value] of Object.entries(queryOrBody)) {
+      if (value === undefined || value === null) continue;
+      destination.searchParams.set(key, Array.isArray(value) ? value.join(',') : String(value));
+    }
+  }
+  // The provider's credential takes precedence over untrusted query input.
+  if (row.auth_mode === 'query') destination.searchParams.set(row.auth_field, credential);
+
+  let upstream: globalThis.Response;
+  try {
+    upstream = await safeFetch(destination, row.allowed_hosts, {
+      method: row.method,
+      headers,
+      body: ['GET', 'DELETE'].includes(row.method) ? undefined : JSON.stringify(input),
+      redirect: 'error',
+      signal: AbortSignal.timeout(row.request_timeout_ms),
+    });
+  } catch {
+    throw Object.assign(new Error('Upstream request failed or timed out.'), { status: 502 });
+  }
+  if (upstream.status === 429) {
+    const rawRetryAfter = upstream.headers.get('retry-after');
+    const retryAt = rawRetryAfter && Number.isNaN(Number(rawRetryAfter)) ? Date.parse(rawRetryAfter) : NaN;
+    const retrySeconds = rawRetryAfter && Number.isFinite(Number(rawRetryAfter))
+      ? Number(rawRetryAfter)
+      : Number.isFinite(retryAt) ? Math.ceil((retryAt - Date.now()) / 1000) : 30;
+    await upstream.body?.cancel().catch(() => undefined);
+    throw Object.assign(new Error('Upstream service is rate limited.'), { status: 429, retryAfter: Math.max(1, Math.min(3600, retrySeconds)) });
+  }
+  if (!upstream.ok) {
+    await upstream.body?.cancel().catch(() => undefined);
+    throw Object.assign(new Error('Upstream service returned an error.'), { status: 502 });
+  }
+
+  let payload: unknown;
+  try {
+    const contentLength = Number(upstream.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > 1_048_576) throw new Error('Upstream response is too large.');
+    if (!upstream.body) throw new Error('Upstream response is empty.');
+    const reader = upstream.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > 1_048_576) {
+        await reader.cancel();
+        throw new Error('Upstream response is too large.');
+      }
+      chunks.push(value);
+    }
+    payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw Object.assign(new Error('Upstream response was not valid JSON.'), { status: 502 });
+  }
+  const validateOutput = ajv.compile(row.output_schema);
+  if (!validateOutput(payload)) throw Object.assign(new Error('Upstream response did not match the operation output schema.'), { status: 502 });
+  return payload;
+}
+
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+const loginAttempts = new Map<string, { count: number; expiresAt: number }>();
+app.post('/api/provider/session', requireSameOrigin, (req, res) => {
+  const key = req.ip ?? 'unknown';
+  const now = Date.now();
+  const attempt = loginAttempts.get(key);
+  if (attempt && attempt.expiresAt > now && attempt.count >= 10) {
+    return res.status(429).json({ error: 'Too many sign-in attempts. Try again in one minute.' });
+  }
+  loginAttempts.set(key, {
+    count: attempt && attempt.expiresAt > now ? attempt.count + 1 : 1,
+    expiresAt: attempt && attempt.expiresAt > now ? attempt.expiresAt : now + 60_000,
+  });
+  if (!verifyProviderPassword(req.body?.password)) return res.status(401).json({ error: 'Invalid provider password.' });
+  loginAttempts.delete(key);
+  const expiresAt = createProviderSession(res);
+  return res.json({ providerId, expiresAt: new Date(expiresAt * 1000).toISOString() });
+});
+
+app.delete('/api/provider/session', requireSameOrigin, (_req, res) => {
+  clearProviderSession(res);
+  res.status(204).end();
+});
+
+app.get('/api/provider/me', requireProviderSession, (_req, res) => {
+  res.json({ providerId, providerName });
+});
+
+app.get('/api/provider/listings', requireProviderSession, async (_req, res, next) => {
+  try {
+    const listings = await pool.query(
+      'SELECT l.*, u.base_url, u.allowed_hosts, u.request_timeout_ms, c.auth_mode, c.auth_field FROM api_listings l JOIN upstream_configs u USING (listing_id) JOIN api_credentials c USING (listing_id) WHERE l.provider_id = $1 ORDER BY l.created_at DESC',
+      [providerId],
+    );
+    const output = await Promise.all(listings.rows.map(async row => ({
+      listingId: row.listing_id,
+      name: row.name,
+      description: row.description,
+      capabilities: row.capabilities,
+      availability: row.availability,
+      upstreamBaseUrl: row.base_url,
+      allowedHosts: row.allowed_hosts,
+      requestTimeoutMs: row.request_timeout_ms,
+      credentialConfigured: true,
+      authMode: row.auth_mode,
+      authField: row.auth_field,
+      operations: (await getListingOperations(row.listing_id)).map(safePublicOperation),
+    })));
+    res.json({ items: output });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/provider/listings', requireSameOrigin, requireProviderSession, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const { listing, upstream, credential, operations } = req.body ?? {};
+    if (!isRecord(listing) || !isRecord(upstream) || !isRecord(credential) || !Array.isArray(operations)) {
+      throw invalid('Provide listing, upstream, credential, and operations.');
+    }
+    const listingInput = listing as ListingInput;
+    const listingId = listingInput.listingId ?? `listing-${randomUUID()}`;
+    if (!validId(listingId) || typeof listingInput.name !== 'string' || typeof listingInput.description !== 'string') {
+      throw invalid('Listing needs a valid ID, name, and description.');
+    }
+    if (!Array.isArray(listingInput.capabilities) || listingInput.capabilities.length === 0 || listingInput.capabilities.length > 20) {
+      throw invalid('Provide between one and twenty capabilities.');
+    }
+
+    const baseUrlText = upstream.baseUrl;
+    if (typeof baseUrlText !== 'string') throw invalid('Upstream base URL is required.');
+    let parsedBaseUrl: URL;
+    try { parsedBaseUrl = new URL(baseUrlText); } catch { throw invalid('Upstream base URL must be a valid HTTPS origin.'); }
+    let baseUrl: URL;
+    try { baseUrl = await assertAllowedDestination(baseUrlText, [parsedBaseUrl.hostname]); }
+    catch { throw invalid('Upstream must use a public HTTPS host on port 443.'); }
+    if (baseUrl.pathname !== '/' || baseUrl.search || baseUrl.hash) throw invalid('Upstream base URL must contain only the HTTPS origin.');
+
+    const authMode = credential.mode;
+    const authField = credential.field;
+    const secret = credential.value;
+    if (typeof authMode !== 'string' || !['header', 'query'].includes(authMode) || typeof authField !== 'string' || !/^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(authField)) {
+      throw invalid('Credential mode must be header or query, with a simple field name.');
+    }
+    if (authMode === 'header' && /^(host|cookie|content-length|connection|transfer-encoding)$/i.test(authField)) {
+      throw invalid('This HTTP header cannot carry an upstream API key.');
+    }
+    if (typeof secret !== 'string' || secret.length < 4 || secret.length > 512) throw invalid('Provide a valid upstream API credential.');
+    const requestTimeoutMs = upstream.requestTimeoutMs ?? 5000;
+    if (typeof requestTimeoutMs !== 'number' || !Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 250 || requestTimeoutMs > 30000) {
+      throw invalid('Request timeout must be between 250 and 30,000 milliseconds.');
+    }
+    if (operations.length === 0 || operations.length > 20) throw invalid('Provide between one and twenty operations.');
+
+    const normalizedOperations = operations.map((raw: unknown, index: number) => {
+      if (!isRecord(raw)) throw invalid(`Operation ${index + 1} must be an object.`);
+      const operation = raw as OperationInput;
+      const operationId = operation.operationId ?? `operation-${randomUUID()}`;
+      if (!validId(operationId) || typeof operation.name !== 'string' || typeof operation.description !== 'string') throw invalid(`Operation ${index + 1} has invalid identifiers or text.`);
+      if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(operation.method)) throw invalid(`Operation ${operationId} has an unsupported method.`);
+      if (typeof operation.path !== 'string' || !operation.path.startsWith('/') || operation.path.startsWith('//') || operation.path.includes('?') || operation.path.includes('#') || operation.path.split('/').some(part => part === '..')) {
+        throw invalid(`Operation ${operationId} must use a safe absolute path without query or traversal segments.`);
+      }
+      if (!positiveIntegerString(operation.priceUsdMicros)) throw invalid(`Operation ${operationId} needs a positive USD micro-unit cost.`);
+      const markupBasisPoints = operation.markupBasisPoints ?? 200;
+      if (!Number.isInteger(markupBasisPoints) || markupBasisPoints < 0 || markupBasisPoints > 1_000_000) throw invalid(`Operation ${operationId} has an invalid markup.`);
+      if (!isRecord(operation.inputSchema) || !ajv.validateSchema(operation.inputSchema)) throw invalid(`Operation ${operationId} has an invalid input JSON Schema.`);
+      if (!isRecord(operation.outputSchema) || !ajv.validateSchema(operation.outputSchema)) throw invalid(`Operation ${operationId} has an invalid output JSON Schema.`);
+      const publicOperation = {
+        operationId,
+        listingId,
+        name: operation.name,
+        description: operation.description,
+        method: operation.method,
+        path: operation.path,
+        inputSchema: operation.inputSchema,
+        outputSchema: operation.outputSchema,
+        pricing: {
+          model: 'fixed-per-call',
+          priceUsdMicros: servicePriceUsdMicros(operation.priceUsdMicros, markupBasisPoints),
+          markupBasisPoints,
+        },
+        enabled: operation.enabled ?? true,
+      };
+      if (!validateOperation(publicOperation)) throw invalid(`Operation ${operationId} does not match the KeyCard operation contract.`);
+      return { ...operation, operationId, markupBasisPoints };
+    });
+
+    const capabilities = listingInput.capabilities.map(value => String(value).trim()).filter(Boolean);
+    if (capabilities.some(value => value.length > 100)) throw invalid('Capability names must be 100 characters or fewer.');
+    const encrypted = encryptCredential(secret);
+
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO providers (provider_id, name, payout_address)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (provider_id) DO UPDATE SET name = EXCLUDED.name, payout_address = EXCLUDED.payout_address`,
+      [providerId, providerName, process.env.KEYCARD_PAY_TO ?? null],
+    );
+    await client.query(
+      `INSERT INTO api_listings (listing_id, provider_id, name, description, capabilities)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (listing_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, capabilities = EXCLUDED.capabilities, updated_at = now()`,
+      [listingId, providerId, listingInput.name.slice(0, 160), listingInput.description.slice(0, 4000), JSON.stringify([...new Set(capabilities)])],
+    );
+    const operationIds = normalizedOperations.map((operation: OperationInput) => operation.operationId);
+    await client.query(
+      'DELETE FROM api_operations WHERE listing_id = $1 AND NOT (operation_id = ANY($2::text[]))',
+      [listingId, operationIds],
+    );
+    const operationConflicts = await client.query(
+      'SELECT operation_id FROM api_operations WHERE operation_id = ANY($1::text[]) AND listing_id <> $2',
+      [operationIds, listingId],
+    );
+    if (operationConflicts.rowCount) throw invalid('An operation ID is already used by another listing.');
+    await client.query(
+      `INSERT INTO upstream_configs (listing_id, base_url, allowed_hosts, request_timeout_ms)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (listing_id) DO UPDATE SET base_url = EXCLUDED.base_url, allowed_hosts = EXCLUDED.allowed_hosts, request_timeout_ms = EXCLUDED.request_timeout_ms`,
+      [listingId, baseUrl.origin, [baseUrl.hostname], requestTimeoutMs],
+    );
+    await client.query(
+      `INSERT INTO api_credentials (listing_id, auth_mode, auth_field, encrypted_secret, nonce, auth_tag, key_version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (listing_id) DO UPDATE SET auth_mode = EXCLUDED.auth_mode, auth_field = EXCLUDED.auth_field, encrypted_secret = EXCLUDED.encrypted_secret, nonce = EXCLUDED.nonce, auth_tag = EXCLUDED.auth_tag, key_version = EXCLUDED.key_version, updated_at = now()`,
+      [listingId, authMode, authField, encrypted.encryptedSecret, encrypted.nonce, encrypted.authTag, encrypted.keyVersion],
+    );
+    for (const operation of normalizedOperations) {
+      await client.query(
+        `INSERT INTO api_operations (operation_id, listing_id, name, description, method, path, input_schema, output_schema, price_usd_micros, markup_basis_points, enabled)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (operation_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, method = EXCLUDED.method, path = EXCLUDED.path, input_schema = EXCLUDED.input_schema, output_schema = EXCLUDED.output_schema, price_usd_micros = EXCLUDED.price_usd_micros, markup_basis_points = EXCLUDED.markup_basis_points, enabled = EXCLUDED.enabled, updated_at = now() WHERE api_operations.listing_id = EXCLUDED.listing_id`,
+        [operation.operationId, listingId, operation.name.slice(0, 120), operation.description.slice(0, 2000), operation.method, operation.path, JSON.stringify(operation.inputSchema), JSON.stringify(operation.outputSchema), operation.priceUsdMicros, operation.markupBasisPoints, operation.enabled ?? true],
+      );
+    }
+    await client.query('COMMIT');
+    return res.status(201).json({ listingId, operationIds: normalizedOperations.map((operation: OperationInput) => operation.operationId) });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    next(error);
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/provider/listings/:listingId/credential', requireSameOrigin, requireProviderSession, async (req, res, next) => {
+  try {
+    const { mode, field, value } = req.body ?? {};
+    if (!['header', 'query'].includes(mode) || typeof field !== 'string' || !/^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(field) || typeof value !== 'string' || value.length < 4 || value.length > 512) {
+      throw invalid('Provide a valid credential mode, field, and value.');
+    }
+    if (mode === 'header' && /^(host|cookie|content-length|connection|transfer-encoding)$/i.test(field)) {
+      throw invalid('This HTTP header cannot carry an upstream API key.');
+    }
+    const listing = await pool.query('SELECT listing_id FROM api_listings WHERE listing_id = $1 AND provider_id = $2', [req.params.listingId, providerId]);
+    if (listing.rowCount !== 1) return res.status(404).json({ error: 'Listing not found.' });
+    const encrypted = encryptCredential(value);
+    await pool.query(
+      `UPDATE api_credentials SET auth_mode = $2, auth_field = $3, encrypted_secret = $4, nonce = $5, auth_tag = $6, key_version = $7, updated_at = now() WHERE listing_id = $1`,
+      [req.params.listingId, mode, field, encrypted.encryptedSecret, encrypted.nonce, encrypted.authTag, encrypted.keyVersion],
+    );
+    return res.json({ credentialConfigured: true });
+  } catch (error) { return next(error); }
+});
+
+app.patch('/api/provider/listings/:listingId/availability', requireSameOrigin, requireProviderSession, async (req, res, next) => {
+  try {
+    const { availability } = req.body ?? {};
+    if (!['available', 'temporarily-unavailable', 'disabled'].includes(availability)) throw invalid('Choose a valid listing availability state.');
+    const updated = await pool.query(
+      'UPDATE api_listings SET availability = $3, updated_at = now() WHERE listing_id = $1 AND provider_id = $2 RETURNING listing_id',
+      [req.params.listingId, providerId, availability],
+    );
+    if (updated.rowCount !== 1) return res.status(404).json({ error: 'Listing not found.' });
+    return res.json({ listingId: req.params.listingId, availability });
+  } catch (error) { return next(error); }
+});
+
+app.get('/api/discovery', async (req, res, next) => {
+  try {
+    const terms = typeof req.query.capability === 'string' ? req.query.capability.toLowerCase() : undefined;
+    const listingsResult = await pool.query(
+      `SELECT * FROM api_listings
+       WHERE availability = 'available'
+         AND ($1::text IS NULL OR EXISTS (
+           SELECT 1 FROM jsonb_array_elements_text(capabilities) c(value) WHERE lower(c.value) = $1
+         ))
+       ORDER BY updated_at DESC`,
+      [terms ?? null],
+    );
+    const items = [];
+    for (const row of listingsResult.rows) {
+      const operationRows = await getListingOperations(row.listing_id, true);
+      const operations = operationRows.map(safePublicOperation);
+      items.push({ ...safePublicListing(row, operations), operations });
+    }
+    return res.json({ items });
+  } catch (error) { return next(error); }
+});
+
+async function providerPreview(req: Request, res: Response, next: (error?: unknown) => void) {
+  try {
+    const payload = await forwardUpstream(String(req.params.listingId), String(req.params.operationId), req, true);
+    res.json({ preview: true, result: payload, requestHash: `sha256:${createHash('sha256').update(JSON.stringify(req.body ?? req.query)).digest('hex')}` });
+  } catch (error) { next(error); }
+}
+
+app.all('/api/provider/preview/:listingId/:operationId', requireSameOrigin, requireProviderSession, providerPreview);
+
+const callStore = new PgCallStore(pool);
+app.all('/api/proxy/:listingId/:operationId', createPaidHandler({
+  store: callStore, gateway: paymentGateway, origin: publicOrigin, quote: issueQuote,
+  upstream: req => forwardUpstream(String(req.params.listingId), String(req.params.operationId), req),
+}));
+
+app.get('/api/provider/earnings', requireProviderSession, async (_req, res, next) => {
+  try {
+    const summary = await pool.query(`SELECT
+      COALESCE(sum((requirements->>'amount')::numeric) FILTER (WHERE payment_confirmed),0)::text AS received_lovelace,
+      COALESCE(sum((requirements->>'amount')::numeric) FILTER (WHERE state='completed' AND payment_confirmed),0)::text AS earned_lovelace,
+      COALESCE(sum((requirements->>'amount')::numeric) FILTER (WHERE refund_status='due'),0)::text AS refund_due_lovelace,
+      COALESCE(sum((requirements->>'amount')::numeric) FILTER (WHERE refund_status='paid'),0)::text AS refunded_lovelace,
+      count(*) FILTER (WHERE state='settling')::integer AS pending_calls,
+      count(*) FILTER (WHERE state='review')::integer AS review_calls
+      FROM paid_calls WHERE provider_id=$1`, [providerId]);
+    res.json({ ...summary.rows[0], payoutModel: 'direct-to-provider', platformFeeLovelace: '0' });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/provider/payments', requireProviderSession, async (_req, res, next) => {
+  try {
+    const calls = await pool.query('SELECT * FROM paid_calls WHERE provider_id=$1 ORDER BY created_at DESC LIMIT 100', [providerId]);
+    res.json({ items: calls.rows.map(call => ({ ...receipt(call), listingId: call.listing_id,
+      operationId: call.operation_id, payer: call.payer, createdAt: call.created_at })) });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/provider/payments/:receiptId/reconcile', requireSameOrigin, requireProviderSession, async (req, res, next) => {
+  try {
+    const result = await callStore.locked(String(req.params.receiptId), async session => {
+      const call = await session.load();
+      if (!call || call.provider_id !== providerId) throw Object.assign(new Error('Receipt not found.'), { status: 404 });
+      await reconcileCall(call, paymentGateway, session);
+      return receipt(call);
+    });
+    res.status(result ? 200 : 409).json(result ?? { error: 'Call is in progress.' });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/provider/payments/:receiptId/refund', requireSameOrigin, requireProviderSession, async (req, res, next) => {
+  try {
+    const txHash = req.body?.transaction;
+    if (typeof txHash !== 'string' || !/^[a-f0-9]{64}$/.test(txHash)) throw invalid('Provide the confirmed refund transaction hash.');
+    const result = await callStore.locked(String(req.params.receiptId), async session => {
+      const call = await session.load();
+      if (!call || call.provider_id !== providerId) throw Object.assign(new Error('Receipt not found.'), { status: 404 });
+      if (call.refund_status === 'paid' && call.refund_tx_hash === txHash) return receipt(call);
+      if (call.refund_status !== 'due' || !call.payer || txHash === call.tx_hash) throw Object.assign(new Error('This payment has no refundable balance or verified payer address.'), { status: 409 });
+      if (!await verifyRefund(txHash, call.payer, call.requirements.amount, call.tx_hash!)) throw invalid('Refund must return the full service amount to the verified payer with one newer Preprod confirmation.');
+      call.refund_status = 'paid'; call.refund_tx_hash = txHash;
+      await session.save(call);
+      return receipt(call);
+    });
+    res.status(result ? 200 : 409).json(result ?? { error: 'Call is in progress.' });
+  } catch (error) { next(error); }
+});
+
+app.use((error: any, _req: Request, res: Response, _next: unknown) => {
+  const status = Number.isInteger(error?.status) ? error.status : 500;
+  if (status === 429 && Number.isInteger(error?.retryAfter)) res.setHeader('Retry-After', String(error.retryAfter));
+  if (status >= 500) console.error('KeyCard request failed:', error?.message ?? 'Unknown server error');
+  return res.status(status).json({ error: status >= 500 ? 'The request could not be completed.' : error.message });
+});
+
+export { app };
