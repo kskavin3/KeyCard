@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b0d0c" />
+    <meta name="description" content="The access layer for the agent economy. Discover APIs, pay per call in ADA, and unlock sponsored access with KeyCard." />
+    <meta property="og:title" content="KeyCard — Every API. One KeyCard." />
+    <meta property="og:description" content="Traditional APIs. Agent-native access. A new way to discover, pay, and build on Cardano." />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&display=swap" rel="stylesheet" />
+    <title>KeyCard — Every API. One KeyCard.</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <symbol id="icon-mark" viewBox="0 0 32 32"><path d="M5 3h23v9H15v17H5V3Zm14 13h9v9h-9z" fill="currentColor" /></symbol>
+      <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6" /></symbol>
+      <symbol id="icon-up-right" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12" /></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
+      <symbol id="icon-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3" /></symbol>
+      <symbol id="icon-code" viewBox="0 0 24 24"><path d="m7 6-6 6 6 6m10-12 6 6-6 6m-4-15-2 18" /></symbol>
+      <symbol id="icon-spark" viewBox="0 0 24 24"><path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5L12 2Z" /></symbol>
+      <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H4v13h4" /></symbol>
+      <symbol id="icon-cardano" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><circle cx="12" cy="7" r="1.8"/><circle cx="7.7" cy="9.5" r="1.8"/><circle cx="7.7" cy="14.5" r="1.8"/><circle cx="12" cy="17" r="1.8"/><circle cx="16.3" cy="14.5" r="1.8"/><circle cx="16.3" cy="9.5" r="1.8"/><circle cx="12" cy="1" r="1"/><circle cx="2.5" cy="6.5" r="1"/><circle cx="2.5" cy="17.5" r="1"/><circle cx="12" cy="23" r="1"/><circle cx="21.5" cy="17.5" r="1"/><circle cx="21.5" cy="6.5" r="1"/></g></symbol>
+    </svg>
+
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="nav-wrap container">
+        <a class="brand" href="#" aria-label="KeyCard home"><svg class="brand-mark"><use href="#icon-mark" /></svg>KeyCard<span class="brand-period" aria-hidden="true">•</span></a>
+        <nav class="desktop-nav" aria-label="Main navigation">
+          <a href="#how-it-works">How it works</a>
+          <a href="#ecosystem">Who it's for</a>
+          <a href="#sponsorship">Sponsored access</a>
+        </nav>
+        <div class="nav-actions">
+          <a class="button button-small button-light" href="https://github.com/kskavin3/KeyCard" target="_blank" rel="noopener noreferrer">Start building <svg class="icon"><use href="#icon-up-right" /></svg></a>
+          <button class="menu-toggle" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-nav"><span></span><span></span></button>
+        </div>
+      </div>
+      <nav id="mobile-nav" class="mobile-nav" aria-label="Mobile navigation" inert>
+        <a href="#how-it-works">How it works <span>01</span></a>
+        <a href="#ecosystem">Who it's for <span>02</span></a>
+        <a href="#sponsorship">Sponsored access <span>03</span></a>
+        <a href="#playground">Try the demo <span>04</span></a>
+      </nav>
+      <div class="reading-progress" aria-hidden="true"></div>
+    </header>
+
+    <main id="main">
+      <section class="hero container" aria-labelledby="hero-title">
+        <div class="hero-content">
+          <div class="eyebrow hero-entrance"><span class="status-dot"></span> THE ACCESS LAYER FOR AI AGENTS</div>
+          <h1 id="hero-title" class="hero-entrance">Every API.<br />One <span class="lime">KeyCard.</span></h1>
+          <p class="hero-description hero-entrance">Give your agent the keys to the internet.<br class="desktop-break" /> Discover APIs. Pay in ADA. Get things done.</p>
+          <div class="hero-actions hero-entrance">
+            <a class="button button-lime" href="#playground">Explore KeyCard <svg class="icon"><use href="#icon-up-right" /></svg></a>
+            <a class="text-link" href="#how-it-works"><span class="play-icon">▶</span> See how it works</a>
+          </div>
+          <div class="hero-footnote hero-entrance"><svg class="icon"><use href="#icon-cardano" /></svg><span>Built on Cardano</span><span class="footnote-divider"></span><span>Powered by x402</span></div>
+        </div>
+
+        <div class="hero-visual" aria-label="A layered KeyCard access card, connecting an agent to APIs" role="img">
+          <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit orbit-three"></div>
+          <span class="orbit-cross cross-one">+</span><span class="orbit-cross cross-two">+</span>
+          <span class="visual-coordinate">37°  /  ACCESS WITHOUT LIMITS</span>
+          <div class="card-scene">
+            <div class="access-card card-back"><span>OPEN BY DESIGN.</span><svg><use href="#icon-mark" /></svg></div>
+            <div class="access-card card-middle"><span class="mono">PERMISSION TO BUILD</span><span class="middle-lines"></span></div>
+            <div class="access-card card-front">
+              <div class="card-top"><span class="card-brand"><svg><use href="#icon-mark" /></svg>KeyCard</span><svg class="contactless" viewBox="0 0 32 32"><path d="M11 10a10 10 0 0 1 0 12m5-16a16 16 0 0 1 0 20m5-24a22 22 0 0 1 0 28" /></svg></div>
+              <div class="card-emblem"><svg><use href="#icon-mark" /></svg></div>
+              <div class="card-bottom"><div><span class="card-caption">ONE KEY. EVERY POSSIBILITY.</span><span class="card-number">402 &nbsp; / &nbsp; UNLIMITED POTENTIAL</span></div><svg class="card-network"><use href="#icon-cardano" /></svg></div>
+              <div class="card-grain"></div>
+            </div>
+          </div>
+          <div class="floating-receipt"><span class="receipt-icon"><svg class="icon"><use href="#icon-check" /></svg></span><div><strong>Access granted</strong><span>One call. Infinite possibilities.</span></div><span class="receipt-pulse"></span></div>
+          <div class="visual-bottom"><span class="small-cross">+</span><span>YOUR AGENT'S NEXT SUPERPOWER</span><span class="small-cross">+</span></div>
+        </div>
+
+        <div class="hero-bottom"><span>TRADITIONAL APIs. AGENT-NATIVE ACCESS.</span><a href="#ecosystem">SCROLL TO UNLOCK <span>↓</span></a></div>
+      </section>
+
+      <div class="capability-strip">
+        <div class="container capability-inner"><span class="strip-label">LESS FRICTION.<br /><strong>MORE POSSIBILITY.</strong></span><span><svg class="icon"><use href="#icon-code" /></svg> Any traditional API</span><span><svg class="icon"><use href="#icon-cardano" /></svg> Native ADA payments</span><span><svg class="icon"><use href="#icon-lock" /></svg> Keys stay private</span><span><svg class="icon"><use href="#icon-spark" /></svg> Agent-ready by design</span></div>
+      </div>
+
+      <section class="section container ecosystem" id="ecosystem" aria-labelledby="ecosystem-title">
+        <div class="section-heading reveal"><div><span class="eyebrow"><span class="tiny-square"></span> A BETTER EXCHANGE</span><h2 id="ecosystem-title">Good for your agent.<br /><span class="muted">Great for everyone.</span></h2></div><p>One open ecosystem. Three ways to move forward.<br />The right incentives, built right in.</p></div>
+        <div class="audience-grid">
+          <article class="audience-card reveal"><div class="audience-top"><span class="mono">01 / API PROVIDERS</span><svg class="icon"><use href="#icon-code" /></svg></div><div class="mini-visual provider-visual" aria-hidden="true"><div class="api-token">{ }</div><span class="connector"><i></i></span><div class="key-token"><svg><use href="#icon-mark" /></svg></div><span class="connector"><i></i></span><div class="ada-token">₳</div></div><h3>Your API. A new audience.</h3><p>Bring your API key. Set your markup. Turn your existing service into something agents can discover and pay for.</p><a class="card-link" href="#how-it-works">Open the door <svg class="icon"><use href="#icon-arrow" /></svg></a></article>
+          <article class="audience-card reveal"><div class="audience-top"><span class="mono">02 / AGENT BUILDERS</span><svg class="icon"><use href="#icon-spark" /></svg></div><div class="mini-visual agent-visual" aria-hidden="true"><div class="price-row"><span><i></i> API Alpha</span><span>₳ 0.08</span></div><div class="price-row best"><span><i></i> API Beta</span><span>₳ 0.02 <svg class="icon"><use href="#icon-check" /></svg></span></div><div class="price-row"><span><i></i> API Gamma</span><span>₳ 0.05</span></div></div><h3>Less setup. More doing.</h3><p>One skill to discover the right API, choose the lowest eligible price, and pay only for what your agent uses.</p><a class="card-link" href="#playground">Put it to work <svg class="icon"><use href="#icon-arrow" /></svg></a></article>
+          <article class="audience-card reveal"><div class="audience-top"><span class="mono">03 / SPONSORS</span><svg class="icon"><use href="#icon-plus" /></svg></div><div class="mini-visual sponsor-visual" aria-hidden="true"><div class="sponsor-orbit"></div><div class="sponsor-orbit inner"></div><div class="sponsor-heart"><svg class="icon"><use href="#icon-spark" /></svg></div><span class="sponsor-badge">A LITTLE SUPPORT. A LOT OF POTENTIAL.</span></div><h3>Be part of the answer.</h3><p>Fund useful API calls and reach people through relevant, clearly labeled placements. Real utility comes first.</p><a class="card-link" href="#sponsorship">Make a connection <svg class="icon"><use href="#icon-arrow" /></svg></a></article>
+        </div>
+        <p class="section-note">Concept illustrations. Example prices are not live quotes.</p>
+      </section>
+
+      <section class="how-section" id="how-it-works" aria-labelledby="how-title">
+        <div class="container">
+          <div class="section-heading reveal"><div><span class="eyebrow"><span class="tiny-square"></span> FROM INTENT TO ACTION</span><h2 id="how-title">A little less friction.<br /><span class="muted">A lot more flow.</span></h2></div><span class="section-index mono">[ THE KEYCARD PROTOCOL ]</span></div>
+          <div class="story-layout">
+            <div class="story-steps">
+              <article class="story-step" data-step="0"><span class="step-number">01</span><div><span class="eyebrow">DISCOVER</span><h3>The right API.<br />At the right price.</h3><p>Your agent finds services that fit the task, compares equivalent operations, and chooses the cheapest available match.</p><span class="step-chip">ONE SKILL. A WORLD OF APIs.</span></div></article>
+              <article class="story-step" data-step="1"><span class="step-number">02</span><div><span class="eyebrow">PAY OR GET SPONSORED</span><h3>A paywall.<br />Not a roadblock.</h3><p>KeyCard returns a clear quote. Your agent pays in ADA within its budget, or requests a sponsor to cover the call.</p><span class="step-chip">YOUR BUDGET. YOUR BOUNDARIES.</span></div></article>
+              <article class="story-step" data-step="2"><span class="step-number">03</span><div><span class="eyebrow">UNLOCK</span><h3>Keys stay safe.<br />Ideas move forward.</h3><p>KeyCard verifies access, makes the upstream request, and delivers the result. The provider's API key never reaches the agent.</p><span class="step-chip">REQUEST → VERIFY → DELIVER</span></div></article>
+            </div>
+            <div class="story-sticky">
+              <div class="flow-window">
+                <div class="window-bar"><div class="window-dots"><i></i><i></i><i></i></div><span class="mono">keycard / access protocol</span><span class="live-label"><i></i> PREVIEW</span></div>
+                <div class="flow-visual"><div class="flow-node agent-node"><svg class="icon"><use href="#icon-spark" /></svg><span>YOUR AGENT</span></div><div class="flow-line"><i></i></div><div class="flow-key"><svg><use href="#icon-mark" /></svg></div><div class="flow-line"><i></i></div><div class="flow-node api-node"><svg class="icon"><use href="#icon-code" /></svg><span>ANY API</span></div></div>
+                <div class="flow-scenes">
+                  <div class="flow-scene" data-scene="0"><div class="terminal-command"><span>›</span> discover <span class="code-white">"web search"</span><span class="terminal-cursor"></span></div><div class="terminal-comment">Finding the best fit for your agent...</div><div class="discovery-row"><span>Search Alpha</span><span>₳ 0.08</span></div><div class="discovery-row selected"><span><svg class="icon"><use href="#icon-check" /></svg> Search Beta</span><span>₳ 0.02 <small>BEST MATCH</small></span></div><div class="discovery-row"><span>Search Gamma</span><span>₳ 0.05</span></div><div class="terminal-footer"><span class="lime">3 services found</span><span>Sorted by total cost</span></div></div>
+                  <div class="flow-scene" data-scene="1" hidden><div class="terminal-command"><span>›</span> request <span class="code-white">/proxy/web-search</span></div><div class="http-status"><span>402</span> PAYMENT REQUIRED</div><div class="quote-row"><span>Quoted total</span><strong>₳ 0.02</strong></div><div class="quote-row"><span>Payment network</span><strong>Cardano</strong></div><div class="quote-row"><span>Alternative</span><strong class="lime">Request sponsorship ↗</strong></div><div class="terminal-footer"><span class="lime">Your agent stays in control</span><span>Example quote</span></div></div>
+                  <div class="flow-scene" data-scene="2" hidden><div class="terminal-command"><span>›</span> access <span class="code-white">verified</span></div><div class="success-response"><span><svg class="icon"><use href="#icon-check" /></svg></span><strong>200 OK</strong><p>Everything your agent needs.<br />Nothing it shouldn't see.</p></div><div class="terminal-footer"><span class="lime">Response delivered</span><span><svg class="icon"><use href="#icon-lock" /></svg> Credentials protected</span></div></div>
+                </div>
+                <div class="flow-progress" aria-hidden="true"><span class="active"></span><span></span><span></span><small>01 — DISCOVER</small></div>
+              </div>
+              <p class="flow-caption"><svg class="icon"><use href="#icon-lock" /></svg> A direct path to the result. A private path for your keys.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section container" id="sponsorship" aria-labelledby="sponsor-title">
+        <div class="sponsorship-panel reveal">
+          <div class="sponsorship-copy"><span class="eyebrow"><span class="tiny-square"></span> MEET SPONSORED ACCESS</span><h2 id="sponsor-title">No balance.<br />Still in business.</h2><p>Great ideas shouldn't stop at an empty wallet. A relevant sponsor can pick up the API bill, while your agent saves a sponsored entry in adVault.</p><a class="button button-dark" href="#playground" data-demo-link="sponsored">Try a sponsored call <svg class="icon"><use href="#icon-up-right" /></svg></a><span class="sponsor-fine-print">Useful answers. Relevant placements. Clearly disclosed.</span></div>
+          <div class="sponsorship-art" aria-hidden="true"><div class="sponsor-ring ring-one"></div><div class="sponsor-ring ring-two"></div><div class="sponsor-ring ring-three"></div><span class="sponsor-art-plus">+</span><div class="zero-balance"><span>AGENT WALLET</span><strong>0<span>₳</span></strong><span class="zero-badge"><svg class="icon"><use href="#icon-check" /></svg> POTENTIAL: UNLIMITED</span></div><div class="ad-vault-card"><div><span class="vault-icon"><svg class="icon"><use href="#icon-lock" /></svg></span><strong>adVault</strong><span class="vault-status">VERIFIED</span></div><span class="vault-hash">entry_402 &nbsp; · &nbsp; 0x7f…a92c</span><div class="vault-bottom"><span>Sponsored entry stored</span><svg class="icon"><use href="#icon-check" /></svg></div></div></div>
+          <div class="sponsorship-steps"><span><b>01</b> Match a sponsor</span><i>→</i><span><b>02</b> Store in adVault</span><i>→</i><span><b>03</b> Unlock the API</span></div>
+        </div>
+        <p class="section-note">Sponsorship depends on campaign eligibility and available budget. Sponsor funding covers the call and required fees.</p>
+      </section>
+
+      <section class="section playground-section container" id="playground" aria-labelledby="playground-title">
+        <div class="playground-intro reveal"><span class="eyebrow"><span class="tiny-square"></span> LESS TALK. MORE TRY.</span><h2 id="playground-title">Your first call.<br /><span class="muted">On the house.</span></h2><p>Take the access flow for a spin. Choose an API, pick a payment path, and watch the pieces click.</p><span class="preview-note"><span class="status-dot"></span> INTERACTIVE PREVIEW · NO WALLET NEEDED</span><div class="playground-detail"><svg class="icon"><use href="#icon-code" /></svg><span>This demo uses example services and prices.<br />No real API calls or payments are made.</span></div></div>
+        <div class="playground-window reveal">
+          <div class="window-bar"><div class="window-dots"><i></i><i></i><i></i></div><span class="mono">keycard / playground</span><button class="copy-button" id="copy-request" aria-label="Copy example request"><svg class="icon"><use href="#icon-copy" /></svg></button></div>
+          <div class="playground-controls"><label for="api-select">01 &nbsp; PICK YOUR CAPABILITY</label><select id="api-select"><option value="search">Web search</option><option value="weather">Weather data</option><option value="image">Image generation</option></select><label id="payment-label">02 &nbsp; CHOOSE YOUR ACCESS</label><div class="payment-toggle" role="group" aria-labelledby="payment-label"><button class="active" data-mode="paid" aria-pressed="true">Pay in ADA <span>₳</span></button><button data-mode="sponsored" aria-pressed="false">Get sponsored <svg class="icon"><use href="#icon-spark" /></svg></button></div><div class="demo-quote"><div><span id="demo-provider">Search Beta</span><small id="demo-match">Cheapest of 3 matching services</small></div><div><strong id="demo-price">₳ 0.02</strong><small id="demo-payer">Example total / call</small></div></div><button class="button button-lime run-button" id="run-demo">Run request <svg class="icon"><use href="#icon-arrow" /></svg></button></div>
+          <div class="demo-log" id="demo-log" aria-live="polite" aria-atomic="true"><span class="terminal-comment">› Ready when you are.</span></div>
+          <div class="demo-response" id="demo-response" hidden><div><span class="status-dot"></span><strong>200 OK</strong><span id="demo-receipt">Example receipt</span></div><pre id="response-body"></pre></div>
+        </div>
+      </section>
+
+      <section class="section faq-section container" id="faq" aria-labelledby="faq-title"><div class="reveal"><span class="eyebrow"><span class="tiny-square"></span> THE DETAILS</span><h2 id="faq-title">Good questions.<br /><span class="muted">Straight answers.</span></h2><p>A few things you might be wondering.</p></div><div class="faq-list reveal">
+        <details><summary>What exactly is KeyCard?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>KeyCard is an access and payment layer between AI agents and traditional web APIs. Providers register their API and credentials; agents discover suitable services and pay per call in ADA through a Cardano-based x402 proxy.</p></details>
+        <details><summary>Does my agent need a funded wallet?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>For direct payments, yes. The planned agent skill helps you set up a Cardano wallet and optionally fund it. When a relevant sponsor is available, the sponsor can cover the call and required fees even if the agent has no ADA.</p></details>
+        <details><summary>Who gets to see my API keys?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>KeyCard uses the provider's credentials on the server to authenticate upstream requests. Agents receive the API result, not the key. Secure credential storage, rotation, and log redaction are part of the implementation roadmap.</p></details>
+        <details><summary>How does sponsored access work?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>The agent requests sponsorship at the paywall. KeyCard matches a funded campaign, and the agent stores its sponsored entry in adVault. After KeyCard verifies the entry and offer, the sponsor covers the API call. The agent can then use the entry for a relevant, clearly labeled placement.</p></details>
+        <details><summary>Can I use KeyCard today?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>KeyCard is currently in development, starting with a Cardano test-network implementation. This page includes an interactive concept demo. Follow the <a href="https://github.com/kskavin3/KeyCard" target="_blank" rel="noopener noreferrer">open-source repository</a> to explore the roadmap and help shape what's next.</p></details>
+      </div></section>
+
+      <section class="final-cta container reveal"><div class="eyebrow"><span class="status-dot"></span> THE NEXT INTERNET IS AGENT-NATIVE</div><h2>Let's give it<br /><span class="lime">the keys.</span><svg class="cta-star" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 0v100M0 50h100M15 15l70 70M15 85l70-70" /></svg></h2><div class="final-cta-bottom"><p>Build the access layer for what's next.<br />Open by design. Better together.</p><a class="button button-lime" href="https://github.com/kskavin3/KeyCard" target="_blank" rel="noopener noreferrer">Build with KeyCard <svg class="icon"><use href="#icon-up-right" /></svg></a></div></section>
+    </main>
+
+    <footer class="site-footer container"><div class="footer-top"><a class="brand" href="#" aria-label="KeyCard home"><svg class="brand-mark"><use href="#icon-mark" /></svg>KeyCard<span class="brand-period" aria-hidden="true">•</span></a><span>OPEN ACCESS. ENDLESS POSSIBILITY.</span><a href="#main" class="back-to-top">Back to top <span>↑</span></a></div><div class="footer-bottom"><span>© <span id="year">2026</span> KeyCard. Built at TOKEN2049 Origins.</span><div><span class="development-status"><i></i> IN DEVELOPMENT</span><a href="https://github.com/kskavin3/KeyCard" target="_blank" rel="noopener noreferrer">GitHub <svg class="icon"><use href="#icon-up-right" /></svg></a></div></div></footer>
+    <div class="toast" id="toast" role="status"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

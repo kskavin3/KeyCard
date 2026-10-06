@@ -10,7 +10,26 @@ Built at TOKEN2049 Origins.
 
 ## Project status
 
-This repository currently contains the product description and implementation roadmap. The web app, proxy, Cardano payment integration, agent skill, and sponsorship system described below are planned features.
+This repository contains the KeyCard landing page, an interactive concept demo, and the product implementation roadmap. The provider dashboard, proxy, Cardano payment integration, agent skill, and sponsorship system described below are planned features. The landing page's demo uses illustrative data and does not make real API calls or payments.
+
+### Run the landing page
+
+Requires Node.js 22.12+ (or 20.19+).
+
+```sh
+npm install
+npm run dev
+```
+
+Open the local URL printed by Vite. To verify and build the site:
+
+```sh
+npm test
+npm run build
+npm run preview
+```
+
+The page uses HTML, CSS, and vanilla JavaScript with Vite for development and production builds. Motion includes a layered card entrance, scroll reveals, a sticky three-stage walkthrough, and a page progress indicator, with support for reduced-motion preferences. The demo supports direct ADA payments and sponsored access using example data. Typography uses Google Fonts with local system fallbacks.
 
 The payment flow will follow the [x402 HTTP payment model](https://github.com/x402-foundation/x402/blob/main/specs/transports-v2/http.md). The Cardano payment adapter and adVault sponsorship flow require implementation and validation; this README does not imply compatibility with existing x402 clients yet.
 
