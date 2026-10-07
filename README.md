@@ -51,6 +51,11 @@ The open registry console is served at `http://127.0.0.1:4020/provider/`; the la
 
 Registry clients can use `GET /api/registry/services`, filter with `?capability=weather` or free-text `?q=forecast`, inspect one service at `GET /api/registry/services/:listingId`, and publish with `POST /api/registry/services`. Each operation includes its opaque paid proxy URL. The legacy `GET /api/discovery` and provider-console routes remain available for compatibility.
 
+Agents can retrieve relevant, available APIs as JSON with
+`GET /api/discovery?query=weather&limit=20`. Use `capability=weather` instead of
+`query` for an exact capability match. Results include a relevance score,
+operation schemas, effective lovelace pricing, and the operation's proxy URL.
+
 See [paid-call setup, wallet commands, retry contract, and refund policy](docs/paid-calls.md). Run `npm run test:payments` for PostgreSQL integration coverage. The [agent skill](skills/keycard-agent/SKILL.md) covers wallet setup and paid-call instructions. Public calls require a stable secret `Idempotency-Key` alongside the x402 headers.
 
 ## Actors and parties involved

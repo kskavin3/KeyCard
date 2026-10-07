@@ -22,14 +22,18 @@ current HTTP lifecycle, recovery rules, and refund policy.
    1 ADA is 1,000,000 lovelace. Run `npm run agent:wallet -- info` to obtain its
    address, balance, network, and limits. Funding is optional until a paid call;
    show the Preprod address and let the user fund it rather than sending funds.
-4. Search `GET /api/registry/services?capability=CAPABILITY`. Keep only available,
-   enabled operations whose method and input/output schemas satisfy the task.
-   Compare equivalent operations using `pricing.effectivePriceLovelace`; use reliability
-   or availability only as a tie-breaker. Explain the selected listing and price.
+4. Search `GET /api/registry/services?query=QUERY&limit=20` with a concise capability,
+   service name, or operation description. Use `capability=CAPABILITY` when an
+   exact capability match is required. The JSON response contains `count` and
+   ranked `items`; each item has `relevanceScore` and enabled `operations`.
+   Keep operations whose method and input/output schemas satisfy the task.
+   Compare equivalent operations using `pricing.effectivePriceLovelace`; use
+   relevance only to rank suitable matches, not to override a lower total cost.
+   Explain the selected listing and price.
    The final 402 quote and transaction fee determine the actual ADA total, so do
    not describe the registry price alone as the final charge.
-5. Build the proxy URL as `listing.proxyUrl + "/" + operation.operationId`.
-   Put GET/DELETE inputs in its query string and POST/PUT/PATCH inputs in a JSON
+5. Use the selected operation's `proxyUrl`. Put GET/DELETE inputs in its query
+   string and POST/PUT/PATCH inputs in a JSON
    body. Generate one private random request ID for this new logical operation:
    `node -e "console.log(require('node:crypto').randomBytes(24).toString('hex'))"`.
 6. Call the operation with

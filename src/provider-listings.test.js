@@ -92,6 +92,11 @@ test('provider listing ownership, validation, scoped operations and discovery', 
     assert.deepEqual(registrySearch.items.map(item => item.listingId), ['mine-one']);
     const service = await (await fetch(`${origin}/api/registry/services/mine-one`)).json();
     assert.equal(service.listingId, 'mine-one');
+    const relevant = await (await fetch(`${origin}/api/discovery?query=search&limit=1`)).json();
+    assert.deepEqual({ query: relevant.query, count: relevant.count }, { query: 'search', count: 1 });
+    assert.equal(relevant.items[0].relevanceScore > 0, true);
+    assert.equal((await (await fetch(`${origin}/api/discovery?query=missing`)).json()).count, 0);
+    assert.equal((await fetch(`${origin}/api/discovery?limit=0`)).status, 400);
     const proxyPath = new URL(discovery.items[0].operations[0].proxyUrl).pathname;
     const challenge = await fetch(`${origin}${proxyPath}`, {
       headers: { 'Idempotency-Key': randomBytes(32).toString('hex') },
