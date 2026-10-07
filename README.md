@@ -156,6 +156,15 @@ Discovery and checkout must show comparable total costs, including applicable ne
 
 KeyCard will provide an installable agent skill covering wallet setup, optional funding, discovery, and API access.
 
+Install the skill for the current user directly from GitHub:
+
+```sh
+npx --yes git+https://github.com/kskavin3/KeyCard.git
+```
+
+Add `--project` to install into the current project's `.codex/skills` directory,
+or use `--force` to replace an existing installation.
+
 1. **Set up a Cardano account.** Connect an existing wallet or create a dedicated agent wallet, select the network, and configure spending limits. Keep signing keys in the agent's local wallet or signer.
 2. **Fund the agent wallet, optionally.** Show the receiving address and balance, and guide the user through funding. An unfunded agent can attempt the sponsorship flow.
 3. **Discover suitable APIs.** Search the registry by capability and inspect supported inputs, outputs, availability, and current quotes.
