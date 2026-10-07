@@ -5,7 +5,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/index.ts": {
-      "includeFiles": ["schemas/**"],
+      "includeFiles": "schemas/**",
       "maxDuration": 60
     }
   },
