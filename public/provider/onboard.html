@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Provider Onboarding · KeyCard</title>
+    <meta name="description" content="Register your API on KeyCard. Upload your OpenAPI spec, configure pricing, set up your Cardano payout wallet, and start earning ADA in minutes." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/provider/onboard.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">KEYCARD<span> / ONBOARDING</span></a>
+      <a class="button quiet" href="/provider/">← Dashboard</a>
+    </header>
+
+    <main class="shell">
+      <div class="wizard-header">
+        <h1>List your API on KeyCard</h1>
+        <p class="muted">Upload your OpenAPI spec, configure pricing, set up a Cardano payout wallet, and go live — all in one flow.</p>
+        <nav class="steps" aria-label="Onboarding steps">
+          <button class="step active" data-step="1" id="step-nav-1"><span class="step-num">1</span><span class="step-label">Upload Spec</span></button>
+          <div class="step-connector"></div>
+          <button class="step" data-step="2" id="step-nav-2"><span class="step-num">2</span><span class="step-label">Auth &amp; Config</span></button>
+          <div class="step-connector"></div>
+          <button class="step" data-step="3" id="step-nav-3"><span class="step-num">3</span><span class="step-label">Operations &amp; Pricing</span></button>
+          <div class="step-connector"></div>
+          <button class="step" data-step="4" id="step-nav-4"><span class="step-num">4</span><span class="step-label">Cardano Wallet</span></button>
+          <div class="step-connector"></div>
+          <button class="step" data-step="5" id="step-nav-5"><span class="step-num">5</span><span class="step-label">Review &amp; Publish</span></button>
+        </nav>
+      </div>
+
+      <!-- STEP 1: Upload Spec -->
+      <section class="wizard-step" id="step-1">
+        <div class="step-card">
+          <p class="eyebrow">STEP 1 OF 5</p>
+          <h2>Upload your OpenAPI specification</h2>
+          <p class="muted">We'll automatically extract your API's name, base URL, operations, and JSON schemas so you don't have to fill them in manually.</p>
+
+          <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Upload OpenAPI spec file">
+            <div class="dropzone-inner">
+              <div class="dropzone-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </div>
+              <p class="dropzone-title">Drop your OpenAPI file here</p>
+              <p class="muted small">Supports OpenAPI 3.x and Swagger 2.x — JSON or YAML</p>
+              <input type="file" id="spec-file-input" accept=".json,.yaml,.yml" aria-label="Choose OpenAPI spec file" />
+              <button class="button" id="spec-browse-btn" type="button">Browse file</button>
+            </div>
+          </div>
+
+          <div class="divider-or"><span>or paste a URL</span></div>
+
+          <div class="url-input-row">
+            <input type="url" id="spec-url-input" placeholder="https://api.example.com/openapi.json" aria-label="OpenAPI spec URL" />
+            <button class="button" id="spec-fetch-btn" type="button">Fetch</button>
+          </div>
+
+          <div class="parse-result panel" id="parse-result" hidden>
+            <div class="parse-result-header">
+              <div class="parse-icon success">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div>
+                <p class="parse-title" id="parse-api-title">—</p>
+                <p class="muted small" id="parse-api-meta">—</p>
+              </div>
+            </div>
+            <div class="tag-row" id="parse-operations-summary"></div>
+          </div>
+
+          <div class="step-actions">
+            <div></div>
+            <button class="button primary" id="step1-next" type="button" disabled>Continue →</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 2: Auth & Config -->
+      <section class="wizard-step hidden" id="step-2">
+        <div class="step-card">
+          <p class="eyebrow">STEP 2 OF 5</p>
+          <h2>Authentication &amp; upstream config</h2>
+          <p class="muted">Tell KeyCard how to authenticate requests to your API. Credentials are encrypted at rest using AES-256-GCM and never exposed to agents.</p>
+
+          <div class="form-grid">
+            <div class="form-field full">
+              <label for="listing-name">Listing name <span class="req">*</span></label>
+              <input type="text" id="listing-name" placeholder="e.g. Weather API" maxlength="160" required />
+            </div>
+            <div class="form-field full">
+              <label for="listing-desc">Description <span class="req">*</span></label>
+              <textarea id="listing-desc" rows="3" placeholder="What does this API do? What results does it return?" maxlength="4000" required></textarea>
+            </div>
+            <div class="form-field full">
+              <label for="listing-capabilities">Capabilities <span class="muted">(comma separated)</span> <span class="req">*</span></label>
+              <input type="text" id="listing-capabilities" placeholder="weather, forecast, climate" required />
+              <p class="hint">Agents discover listings using these keywords.</p>
+            </div>
+            <div class="form-field full">
+              <label for="base-url">Upstream HTTPS base URL <span class="req">*</span></label>
+              <input type="url" id="base-url" placeholder="https://api.example.com" required />
+              <p class="hint">Must be a public HTTPS origin on port 443. No paths or query strings.</p>
+            </div>
+            <div class="form-field third">
+              <label for="auth-mode">Credential location <span class="req">*</span></label>
+              <select id="auth-mode">
+                <option value="header">HTTP Header</option>
+                <option value="query">Query Parameter</option>
+              </select>
+            </div>
+            <div class="form-field third">
+              <label for="auth-field">Header / parameter name <span class="req">*</span></label>
+              <input type="text" id="auth-field" placeholder="x-api-key" required />
+            </div>
+            <div class="form-field third">
+              <label for="api-secret">Upstream API key <span class="req">*</span></label>
+              <div class="password-field">
+                <input type="password" id="api-secret" autocomplete="new-password" placeholder="sk-…" required />
+                <button class="btn-eye" type="button" id="toggle-secret" aria-label="Toggle API key visibility">
+                  <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <p class="hint">Encrypted before storage. Never logged or forwarded to agents.</p>
+            </div>
+            <div class="form-field half">
+              <label for="request-timeout">Request timeout (ms)</label>
+              <input type="number" id="request-timeout" value="5000" min="250" max="30000" step="250" />
+            </div>
+            <div class="form-field half">
+              <label for="listing-id">Listing ID <span class="muted">(optional)</span></label>
+              <input type="text" id="listing-id" placeholder="weather-api" pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,127}" />
+            </div>
+          </div>
+
+          <div class="step-actions">
+            <button class="button quiet" id="step2-back" type="button">← Back</button>
+            <button class="button primary" id="step2-next" type="button">Continue →</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 3: Operations & Pricing -->
+      <section class="wizard-step hidden" id="step-3">
+        <div class="step-card">
+          <p class="eyebrow">STEP 3 OF 5</p>
+          <h2>Operations &amp; pricing</h2>
+          <p class="muted">Review the operations parsed from your spec. Enable or disable each one, set a per-call USD cost, and adjust the markup.</p>
+
+          <div class="ops-toolbar">
+            <div class="search-box">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input type="text" id="ops-search" placeholder="Filter operations…" aria-label="Filter operations" />
+            </div>
+            <div class="ops-bulk">
+              <button class="button quiet small" id="enable-all-ops" type="button">Enable all</button>
+              <button class="button quiet small" id="disable-all-ops" type="button">Disable all</button>
+              <span class="bulk-price-row">
+                Set all prices: <input type="number" id="bulk-price" placeholder="0.001" min="0.000001" step="0.000001" style="width:90px" />
+                <button class="button small" id="apply-bulk-price" type="button">Apply</button>
+              </span>
+            </div>
+          </div>
+
+          <div class="ops-table-wrapper">
+            <table class="ops-table" id="ops-table">
+              <thead>
+                <tr>
+                  <th><input type="checkbox" id="select-all-ops" aria-label="Select all" /></th>
+                  <th>Method</th>
+                  <th>Path</th>
+                  <th>Operation name</th>
+                  <th>USD cost</th>
+                  <th>Markup %</th>
+                  <th>Enabled</th>
+                </tr>
+              </thead>
+              <tbody id="ops-tbody"></tbody>
+            </table>
+            <p class="muted small" id="ops-empty" hidden>No operations found in this spec.</p>
+          </div>
+          <p class="ops-count muted small" id="ops-count"></p>
+
+          <div class="step-actions">
+            <button class="button quiet" id="step3-back" type="button">← Back</button>
+            <button class="button primary" id="step3-next" type="button">Continue →</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 4: Cardano Wallet -->
+      <section class="wizard-step hidden" id="step-4">
+        <div class="step-card">
+          <p class="eyebrow">STEP 4 OF 5</p>
+          <h2>Cardano payout wallet</h2>
+          <p class="muted">ADA payments from agents go directly to this address. Create a fresh wallet, enter an existing Preprod address, or connect a browser wallet.</p>
+
+          <div class="wallet-tabs" id="wallet-tabs">
+            <button class="wallet-tab active" data-tab="generate" type="button">Generate new wallet</button>
+            <button class="wallet-tab" data-tab="import" type="button">Use existing address</button>
+            <button class="wallet-tab" data-tab="cip30" type="button">Connect browser wallet</button>
+          </div>
+
+          <!-- Generate tab -->
+          <div class="wallet-tab-panel" id="tab-generate">
+            <div class="wallet-generate-box">
+              <div class="wallet-gen-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              </div>
+              <p class="wallet-gen-title">Create a dedicated Preprod payout wallet</p>
+              <p class="muted small">A BIP-39 mnemonic and Cardano Preprod address will be derived in your browser. The mnemonic never leaves this page.</p>
+              <button class="button primary" id="generate-wallet-btn" type="button">
+                <span id="gen-btn-text">Generate wallet</span>
+                <span class="spinner hidden" id="gen-spinner"></span>
+              </button>
+            </div>
+
+            <div class="wallet-result panel" id="wallet-result" hidden>
+              <div class="wallet-addr-row">
+                <div>
+                  <p class="eyebrow">PAYOUT ADDRESS (PREPROD)</p>
+                  <p class="wallet-addr mono" id="wallet-address">—</p>
+                </div>
+                <button class="button quiet small" id="copy-addr-btn" type="button">Copy</button>
+              </div>
+              <div class="wallet-balance-row">
+                <div>
+                  <p class="muted small">ADA Balance</p>
+                  <p class="wallet-balance" id="wallet-balance">— ADA</p>
+                </div>
+                <div class="wallet-actions">
+                  <button class="button small" id="refresh-balance-btn" type="button">Refresh balance</button>
+                  <a class="button small faucet-btn" id="faucet-link" href="https://docs.cardano.org/cardano-testnets/tools/faucet/" target="_blank" rel="noopener">Get testnet ADA →</a>
+                </div>
+              </div>
+              <div class="mnemonic-box">
+                <div class="mnemonic-header">
+                  <p class="eyebrow">SECRET RECOVERY PHRASE</p>
+                  <button class="button quiet small" id="toggle-mnemonic-btn" type="button">Show phrase</button>
+                </div>
+                <div class="mnemonic-words hidden" id="mnemonic-words"></div>
+                <div class="mnemonic-warning">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  Back up this phrase offline. Anyone with it controls this wallet.
+                </div>
+                <button class="button small" id="download-mnemonic-btn" type="button">Download backup (.txt)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Import existing address tab -->
+          <div class="wallet-tab-panel hidden" id="tab-import">
+            <div class="form-field full">
+              <label for="existing-address">Existing Cardano Preprod address <span class="req">*</span></label>
+              <input type="text" id="existing-address" placeholder="addr_test1…" spellcheck="false" autocomplete="off" />
+              <p class="hint">Must start with <code>addr_test1</code> (Cardano Preprod testnet).</p>
+            </div>
+            <button class="button" id="use-existing-btn" type="button">Use this address</button>
+            <div class="wallet-result panel" id="existing-wallet-result" hidden>
+              <div class="wallet-addr-row">
+                <div>
+                  <p class="eyebrow">PAYOUT ADDRESS (PREPROD)</p>
+                  <p class="wallet-addr mono" id="existing-wallet-address">—</p>
+                </div>
+              </div>
+              <div class="wallet-balance-row">
+                <div><p class="muted small">ADA Balance</p><p class="wallet-balance" id="existing-wallet-balance">— ADA</p></div>
+                <div class="wallet-actions">
+                  <button class="button small" id="existing-refresh-btn" type="button">Refresh</button>
+                  <a class="button small faucet-btn" id="existing-faucet-link" href="https://docs.cardano.org/cardano-testnets/tools/faucet/" target="_blank" rel="noopener">Get testnet ADA →</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CIP-30 tab -->
+          <div class="wallet-tab-panel hidden" id="tab-cip30">
+            <p class="muted">Detected browser extension wallets (Nami, Eternl, Flint, Lace, etc.):</p>
+            <div class="cip30-wallets" id="cip30-wallets">
+              <p class="muted small" id="cip30-none">Scanning for wallets…</p>
+            </div>
+            <div class="wallet-result panel" id="cip30-wallet-result" hidden>
+              <div class="wallet-addr-row">
+                <div>
+                  <p class="eyebrow">CONNECTED WALLET</p>
+                  <p class="wallet-addr mono" id="cip30-address">—</p>
+                </div>
+              </div>
+              <div class="wallet-balance-row">
+                <div><p class="muted small">ADA Balance</p><p class="wallet-balance" id="cip30-balance">— ADA</p></div>
+                <div class="wallet-actions">
+                  <a class="button small faucet-btn" id="cip30-faucet-link" href="https://docs.cardano.org/cardano-testnets/tools/faucet/" target="_blank" rel="noopener">Get testnet ADA →</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-actions">
+            <button class="button quiet" id="step4-back" type="button">← Back</button>
+            <button class="button primary" id="step4-next" type="button" disabled>Continue →</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 5: Review & Publish -->
+      <section class="wizard-step hidden" id="step-5">
+        <div class="step-card">
+          <p class="eyebrow">STEP 5 OF 5</p>
+          <h2>Review &amp; publish</h2>
+          <p class="muted">Double-check your listing before publishing. Agents will be able to discover and pay for your API immediately after.</p>
+
+          <div class="review-grid">
+            <div class="review-card">
+              <p class="eyebrow">LISTING</p>
+              <div class="review-rows" id="review-listing-rows"></div>
+            </div>
+            <div class="review-card">
+              <p class="eyebrow">AUTHENTICATION</p>
+              <div class="review-rows" id="review-auth-rows"></div>
+            </div>
+            <div class="review-card">
+              <p class="eyebrow">PAYOUT WALLET</p>
+              <div class="review-rows" id="review-wallet-rows"></div>
+            </div>
+          </div>
+
+          <div class="review-card full-width" style="margin-top:16px">
+            <div class="review-ops-header">
+              <p class="eyebrow" style="margin:0">OPERATIONS</p>
+              <span class="badge active" id="review-ops-count">0 enabled</span>
+            </div>
+            <table class="review-ops-table" id="review-ops-table">
+              <thead><tr><th>Method</th><th>Path</th><th>Name</th><th>Price (USD)</th><th>Markup</th></tr></thead>
+              <tbody id="review-ops-tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="publish-actions">
+            <button class="button quiet" id="step5-back" type="button">← Back</button>
+            <div class="publish-right">
+              <div class="form-field" style="min-width:260px">
+                <label for="dashboard-pw">Dashboard password <span class="req">*</span></label>
+                <input type="password" id="dashboard-pw" autocomplete="current-password" placeholder="Required to publish" required />
+              </div>
+              <button class="button primary publish-btn" id="publish-btn" type="button">
+                <span id="publish-btn-text">Publish listing</span>
+                <span class="spinner hidden" id="publish-spinner"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SUCCESS -->
+      <section class="wizard-step hidden" id="step-success">
+        <div class="step-card success-card">
+          <div class="success-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+          <h2>Your API is live on KeyCard!</h2>
+          <p class="muted">Agents can now discover, pay for, and use your API via the proxy. Payments go directly to your Cardano payout address.</p>
+
+          <div class="success-info panel">
+            <div class="review-row"><span>Listing ID</span><code id="success-listing-id">—</code></div>
+            <div class="review-row"><span>Proxy URL</span><code id="success-proxy-url" style="word-break:break-all">—</code></div>
+            <div class="review-row"><span>Operations registered</span><span id="success-op-count">—</span></div>
+          </div>
+
+          <div class="success-actions">
+            <a class="button" href="/provider/">Go to Provider Dashboard</a>
+            <a class="button primary" href="/api/discovery" target="_blank" rel="noopener">View in Discovery API</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="/provider/onboard.js"></script>
+  </body>
+</html>

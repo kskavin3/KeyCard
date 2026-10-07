@@ -350,7 +350,7 @@ app.post('/api/provider/listings', requireSameOrigin, requireProviderSession, as
       `INSERT INTO providers (provider_id, name, payout_address)
        VALUES ($1, $2, $3)
        ON CONFLICT (provider_id) DO UPDATE SET name = EXCLUDED.name, payout_address = EXCLUDED.payout_address`,
-      [providerId, providerName, process.env.KEYCARD_PAY_TO ?? null],
+      [providerId, providerName, (req.body?.payoutAddress ?? process.env.KEYCARD_PAY_TO) ?? null],
     );
     await client.query(
       `INSERT INTO api_listings (listing_id, provider_id, name, description, capabilities)

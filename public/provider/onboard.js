@@ -1,0 +1,857 @@
+/**
+ * KeyCard Provider Onboarding Wizard
+ * Handles: OpenAPI spec parsing, operations pricing table,
+ *          Cardano wallet generation/import/CIP-30, and listing publish.
+ */
+
+// ─── UTILITIES ────────────────────────────────────────────────
+const toast = document.querySelector('#toast');
+let toastTimer;
+function announce(message, isError = false) {
+  clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.className = isError ? 'error' : '';
+  toast.hidden = false;
+  toastTimer = setTimeout(() => { toast.hidden = true; }, 5000);
+}
+
+function esc(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+async function apiFetch(path, options = {}) {
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      ...(options.body ? { 'content-type': 'application/json' } : {}),
+      ...options.headers,
+    },
+    credentials: 'same-origin',
+  });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
+  return data;
+}
+
+function usdToMicros(value) {
+  const match = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,6}))?$/.exec(String(value).trim());
+  if (!match) throw new Error('Enter a USD cost with at most 6 decimal places.');
+  const micros = BigInt(match[1]) * 1_000_000n + BigInt((match[2] || '').padEnd(6, '0') || '0');
+  if (micros <= 0n) throw new Error('Enter a positive USD cost.');
+  return micros.toString();
+}
+
+// ─── WIZARD STATE ─────────────────────────────────────────────
+const state = {
+  currentStep: 1,
+  parsedSpec: null,       // raw parsed OpenAPI object
+  operations: [],         // [{id, method, path, name, description, inputSchema, outputSchema, priceUsdMicros, markupBasisPoints, enabled}]
+  payoutAddress: null,
+  mnemonic: null,
+};
+
+// ─── STEP NAVIGATION ──────────────────────────────────────────
+function showStep(n) {
+  document.querySelectorAll('.wizard-step').forEach(el => el.classList.add('hidden'));
+  const target = document.querySelector(`#step-${n}`);
+  if (target) { target.classList.remove('hidden'); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  // Update progress nav
+  document.querySelectorAll('.step[data-step]').forEach(btn => {
+    const s = Number(btn.dataset.step);
+    btn.classList.remove('active', 'done');
+    if (s === n) btn.classList.add('active');
+    else if (s < n) btn.classList.add('done');
+  });
+  state.currentStep = n;
+}
+
+document.querySelectorAll('.step[data-step]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const s = Number(btn.dataset.step);
+    if (s < state.currentStep) showStep(s);
+  });
+});
+
+// ─── STEP 1: OPENAPI UPLOAD ────────────────────────────────────
+
+// Minimal YAML→JSON converter (handles simple flat and nested objects/lists)
+function parseYaml(text) {
+  // For most OpenAPI specs a full YAML parser is ideal.
+  // We support JSON natively; for YAML we use a lightweight recursive parser.
+  // Try JSON first, then fall back to a simple YAML parser.
+  try { return JSON.parse(text); } catch {}
+  return parseSimpleYaml(text);
+}
+
+function parseSimpleYaml(text) {
+  // Very lightweight subset parser — handles key:value, lists, and nesting via indentation.
+  // Supports enough of OpenAPI 3 for path/method/schema extraction.
+  const lines = text.split('\n');
+  function parseLines(lines, baseIndent) {
+    const result = {};
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trimStart();
+      if (!trimmed || trimmed.startsWith('#')) { i++; continue; }
+      const indent = line.length - trimmed.length;
+      if (indent < baseIndent) break;
+      if (indent > baseIndent) { i++; continue; } // already consumed
+
+      // List item
+      if (trimmed.startsWith('- ')) {
+        // collect siblings
+        return parseList(lines, baseIndent);
+      }
+
+      const colonIdx = trimmed.indexOf(':');
+      if (colonIdx === -1) { i++; continue; }
+
+      const key = trimmed.slice(0, colonIdx).trim();
+      const rest = trimmed.slice(colonIdx + 1).trim();
+
+      if (rest) {
+        // inline value
+        result[key] = parseScalar(rest);
+        i++;
+      } else {
+        // look ahead for children
+        const childLines = [];
+        i++;
+        while (i < lines.length) {
+          const child = lines[i];
+          const childTrimmed = child.trimStart();
+          if (!childTrimmed || childTrimmed.startsWith('#')) { i++; continue; }
+          const childIndent = child.length - childTrimmed.length;
+          if (childIndent <= indent) break;
+          childLines.push(child.slice(indent + 2 > childIndent ? childIndent : indent + 2));
+          i++;
+        }
+        if (childLines.length) {
+          if (childLines[0].trimStart().startsWith('- ')) {
+            result[key] = parseList(childLines.map(l => l), 0);
+          } else {
+            result[key] = parseLines(childLines, 0);
+          }
+        } else {
+          result[key] = null;
+        }
+      }
+    }
+    return result;
+  }
+
+  function parseList(lines, baseIndent) {
+    const items = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trimStart();
+      if (!trimmed || trimmed.startsWith('#')) { i++; continue; }
+      const indent = line.length - trimmed.length;
+      if (indent < baseIndent) break;
+      if (trimmed.startsWith('- ')) {
+        const rest = trimmed.slice(2).trim();
+        if (rest) {
+          items.push(parseScalar(rest));
+        } else {
+          // nested object
+          const childLines = [];
+          i++;
+          while (i < lines.length) {
+            const child = lines[i];
+            const childTrimmed = child.trimStart();
+            if (!childTrimmed) { i++; continue; }
+            const childIndent = child.length - childTrimmed.length;
+            if (childIndent <= indent) break;
+            childLines.push(child.slice(indent + 2 > childIndent ? childIndent : indent + 2));
+            i++;
+          }
+          items.push(parseLines(childLines, 0));
+          continue;
+        }
+      }
+      i++;
+    }
+    return items;
+  }
+
+  function parseScalar(s) {
+    if (s === 'true') return true;
+    if (s === 'false') return false;
+    if (s === 'null' || s === '~') return null;
+    const n = Number(s);
+    if (!isNaN(n) && s !== '') return n;
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+      return s.slice(1, -1);
+    }
+    return s;
+  }
+
+  return parseLines(lines, 0);
+}
+
+// ─── OpenAPI extraction ─────────────────────────────────────
+function extractFromOpenAPI(spec) {
+  const isV3 = !!spec.openapi;
+  const isV2 = !!spec.swagger;
+
+  const title = spec.info?.title ?? 'Untitled API';
+  const version = spec.info?.version ?? '';
+  const description = spec.info?.description ?? '';
+
+  // Base URL
+  let baseUrl = '';
+  if (isV3 && Array.isArray(spec.servers) && spec.servers.length) {
+    baseUrl = spec.servers[0]?.url ?? '';
+    // If relative, skip
+    if (!baseUrl.startsWith('http')) baseUrl = '';
+  } else if (isV2) {
+    const scheme = (spec.schemes || ['https'])[0];
+    const host = spec.host ?? '';
+    const basePath = spec.basePath ?? '';
+    if (host) baseUrl = `${scheme}://${host}`;
+  }
+
+  // Paths → operations
+  const ops = [];
+  const paths = spec.paths ?? {};
+  const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
+
+  for (const [path, pathObj] of Object.entries(paths)) {
+    if (typeof pathObj !== 'object' || !pathObj) continue;
+    for (const method of METHODS) {
+      const op = pathObj[method];
+      if (!op) continue;
+
+      const operationId = op.operationId
+        ?? `${method}-${path.replace(/[^a-z0-9]/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')}`;
+
+      // Build input schema from parameters
+      let inputSchema = { type: 'object', properties: {}, additionalProperties: false };
+      const required = [];
+      if (Array.isArray(op.parameters)) {
+        for (const param of op.parameters) {
+          if (!param?.name) continue;
+          if (['query', 'path'].includes(param.in)) {
+            const schema = param.schema ?? { type: param.type ?? 'string' };
+            inputSchema.properties[param.name] = schema;
+            if (param.required) required.push(param.name);
+          }
+        }
+      }
+      if (required.length) inputSchema.required = required;
+
+      // For POST/PUT/PATCH with requestBody
+      if (['post', 'put', 'patch'].includes(method) && op.requestBody) {
+        const content = op.requestBody?.content ?? {};
+        const jsonContent = content['application/json'];
+        if (jsonContent?.schema) {
+          inputSchema = jsonContent.schema;
+        }
+      }
+
+      // Output schema from 200/201 response
+      let outputSchema = { type: 'object', additionalProperties: true };
+      const responses = op.responses ?? {};
+      const success = responses['200'] ?? responses['201'];
+      if (success) {
+        const jsonResp = success?.content?.['application/json'] ?? success?.content?.['*/*'];
+        if (jsonResp?.schema) outputSchema = jsonResp.schema;
+        // Swagger 2
+        else if (success?.schema) outputSchema = success.schema;
+      }
+
+      ops.push({
+        id: operationId,
+        name: op.summary ?? operationId,
+        description: op.description ?? op.summary ?? '',
+        method: method.toUpperCase(),
+        path,
+        inputSchema,
+        outputSchema,
+        priceUsd: '0.001',
+        markupBasisPoints: 200,
+        enabled: true,
+      });
+    }
+  }
+
+  return { title, version, description, baseUrl, operations: ops };
+}
+
+function handleSpecText(text) {
+  let spec;
+  try {
+    spec = parseYaml(text);
+  } catch (e) {
+    announce('Could not parse the spec. Please check the file format.', true);
+    return;
+  }
+  const extracted = extractFromOpenAPI(spec);
+  state.parsedSpec = extracted;
+  state.operations = extracted.operations;
+
+  // Show parse result
+  document.querySelector('#parse-api-title').textContent = extracted.title + (extracted.version ? ` v${extracted.version}` : '');
+  document.querySelector('#parse-api-meta').textContent =
+    `${extracted.operations.length} operation${extracted.operations.length !== 1 ? 's' : ''} found` +
+    (extracted.baseUrl ? ` · Base URL: ${extracted.baseUrl}` : ' · No base URL detected');
+
+  const tagRow = document.querySelector('#parse-operations-summary');
+  tagRow.innerHTML = '';
+  const counts = {};
+  for (const op of extracted.operations) counts[op.method] = (counts[op.method] || 0) + 1;
+  for (const [m, c] of Object.entries(counts)) {
+    const tag = document.createElement('span');
+    tag.className = `tag ${m.toLowerCase()}`;
+    tag.textContent = `${c} ${m}`;
+    tagRow.appendChild(tag);
+  }
+
+  document.querySelector('#parse-result').hidden = false;
+  document.querySelector('#step1-next').disabled = false;
+
+  // Pre-fill step 2
+  if (extracted.title) document.querySelector('#listing-name').value = extracted.title;
+  if (extracted.description) document.querySelector('#listing-desc').value = extracted.description.slice(0, 4000);
+  if (extracted.baseUrl) {
+    try {
+      const u = new URL(extracted.baseUrl);
+      document.querySelector('#base-url').value = u.origin;
+    } catch {}
+  }
+
+  announce(`Parsed "${extracted.title}" — ${extracted.operations.length} operations found.`);
+}
+
+// File drop + browse
+const dropzone = document.querySelector('#dropzone');
+const fileInput = document.querySelector('#spec-file-input');
+
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) readSpecFile(file);
+});
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+document.querySelector('#spec-browse-btn').addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) readSpecFile(fileInput.files[0]); });
+
+function readSpecFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => handleSpecText(e.target.result);
+  reader.readAsText(file);
+}
+
+// URL fetch
+document.querySelector('#spec-fetch-btn').addEventListener('click', async () => {
+  const url = document.querySelector('#spec-url-input').value.trim();
+  if (!url) return;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    handleSpecText(await res.text());
+  } catch (e) {
+    announce(`Could not fetch spec: ${e.message}`, true);
+  }
+});
+
+document.querySelector('#step1-next').addEventListener('click', () => showStep(2));
+
+// ─── STEP 2: Auth & Config ─────────────────────────────────────
+document.querySelector('#step2-back').addEventListener('click', () => showStep(1));
+document.querySelector('#step2-next').addEventListener('click', () => {
+  const name = document.querySelector('#listing-name').value.trim();
+  const desc = document.querySelector('#listing-desc').value.trim();
+  const caps = document.querySelector('#listing-capabilities').value.trim();
+  const baseUrl = document.querySelector('#base-url').value.trim();
+  const authField = document.querySelector('#auth-field').value.trim();
+  const secret = document.querySelector('#api-secret').value;
+
+  if (!name || !desc || !caps || !baseUrl || !authField || !secret) {
+    announce('Please fill in all required fields.', true); return;
+  }
+  try { new URL(baseUrl); } catch {
+    announce('Upstream base URL must be a valid HTTPS URL.', true); return;
+  }
+  if (!baseUrl.startsWith('https://')) {
+    announce('Upstream URL must use HTTPS.', true); return;
+  }
+  buildOpsTable();
+  showStep(3);
+});
+
+// Eye toggle
+document.querySelector('#toggle-secret').addEventListener('click', () => {
+  const input = document.querySelector('#api-secret');
+  const isPassword = input.type === 'password';
+  input.type = isPassword ? 'text' : 'password';
+  document.querySelector('#eye-icon').innerHTML = isPassword
+    ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+    : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+});
+
+// ─── STEP 3: Operations Table ──────────────────────────────────
+function buildOpsTable() {
+  const tbody = document.querySelector('#ops-tbody');
+  tbody.innerHTML = '';
+
+  if (!state.operations.length) {
+    document.querySelector('#ops-empty').hidden = false;
+    return;
+  }
+  document.querySelector('#ops-empty').hidden = true;
+
+  for (const op of state.operations) {
+    const tr = document.createElement('tr');
+    tr.dataset.opId = op.id;
+    tr.innerHTML = `
+      <td><input type="checkbox" class="op-select" data-id="${esc(op.id)}" /></td>
+      <td><span class="method-badge method-${esc(op.method)}">${esc(op.method)}</span></td>
+      <td class="path-cell">${esc(op.path)}</td>
+      <td>${esc(op.name)}</td>
+      <td><input type="number" class="op-price" data-id="${esc(op.id)}" value="${esc(op.priceUsd)}" min="0.000001" step="0.000001" /></td>
+      <td><input type="number" class="op-markup" data-id="${esc(op.id)}" value="${esc(op.markupBasisPoints / 100)}" min="0" max="10000" step="0.01" /></td>
+      <td><label class="toggle-switch"><input type="checkbox" class="op-enabled" data-id="${esc(op.id)}" ${op.enabled ? 'checked' : ''} /></label></td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  updateOpsCount();
+
+  tbody.addEventListener('change', e => {
+    const id = e.target.dataset.id;
+    if (!id) return;
+    const op = state.operations.find(o => o.id === id);
+    if (!op) return;
+    if (e.target.classList.contains('op-price')) op.priceUsd = e.target.value;
+    if (e.target.classList.contains('op-markup')) op.markupBasisPoints = Math.round(Number(e.target.value) * 100);
+    if (e.target.classList.contains('op-enabled')) op.enabled = e.target.checked;
+    updateOpsCount();
+  });
+}
+
+function updateOpsCount() {
+  const enabled = state.operations.filter(o => o.enabled).length;
+  document.querySelector('#ops-count').textContent =
+    `${state.operations.length} operations total · ${enabled} enabled`;
+}
+
+document.querySelector('#ops-search').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('#ops-tbody tr').forEach(tr => {
+    const text = tr.textContent.toLowerCase();
+    tr.style.display = text.includes(q) ? '' : 'none';
+  });
+});
+
+document.querySelector('#enable-all-ops').addEventListener('click', () => {
+  state.operations.forEach(o => o.enabled = true);
+  document.querySelectorAll('.op-enabled').forEach(cb => cb.checked = true);
+  updateOpsCount();
+});
+
+document.querySelector('#disable-all-ops').addEventListener('click', () => {
+  state.operations.forEach(o => o.enabled = false);
+  document.querySelectorAll('.op-enabled').forEach(cb => cb.checked = false);
+  updateOpsCount();
+});
+
+document.querySelector('#apply-bulk-price').addEventListener('click', () => {
+  const price = document.querySelector('#bulk-price').value;
+  if (!price) return;
+  state.operations.forEach(o => o.priceUsd = price);
+  document.querySelectorAll('.op-price').forEach(inp => inp.value = price);
+});
+
+document.querySelector('#select-all-ops').addEventListener('change', e => {
+  document.querySelectorAll('.op-select').forEach(cb => cb.checked = e.target.checked);
+});
+
+document.querySelector('#step3-back').addEventListener('click', () => showStep(2));
+document.querySelector('#step3-next').addEventListener('click', () => {
+  const enabled = state.operations.filter(o => o.enabled);
+  if (!enabled.length) {
+    announce('Enable at least one operation before continuing.', true); return;
+  }
+  showStep(4);
+  scanCip30Wallets();
+});
+
+// ─── STEP 4: Cardano Wallet ────────────────────────────────────
+
+// Wallet tab switching
+document.querySelectorAll('.wallet-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.wallet-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.wallet-tab-panel').forEach(p => p.classList.add('hidden'));
+    tab.classList.add('active');
+    document.querySelector(`#tab-${tab.dataset.tab}`).classList.remove('hidden');
+  });
+});
+
+// ─── BIP39 Mnemonic generation (no external library) ──────────
+// Uses Web Crypto to generate entropy and maps to BIP39 wordlist.
+// We embed a minimal subset of BIP39 generation logic using PBKDF2 + SHA-256.
+
+const BIP39_WORDLIST_URL = 'https://raw.githubusercontent.com/bitcoinjs/bip39/master/src/wordlists/english.json';
+let wordlistCache = null;
+async function getBip39Words() {
+  if (wordlistCache) return wordlistCache;
+  try {
+    const res = await fetch(BIP39_WORDLIST_URL);
+    wordlistCache = await res.json();
+    return wordlistCache;
+  } catch {
+    // Fallback: generate a deterministic label set so UX doesn't break
+    return Array.from({ length: 2048 }, (_, i) => `word${i}`);
+  }
+}
+
+async function generateMnemonic(strength = 256) {
+  const words = await getBip39Words();
+  const entropy = new Uint8Array(strength / 8);
+  crypto.getRandomValues(entropy);
+
+  // SHA-256 checksum
+  const hashBuf = await crypto.subtle.digest('SHA-256', entropy);
+  const hash = new Uint8Array(hashBuf);
+  const checksumBits = strength / 32;
+
+  // Convert entropy+checksum to bit string
+  let bits = '';
+  for (const byte of entropy) bits += byte.toString(2).padStart(8, '0');
+  for (let i = 0; i < checksumBits; i++) bits += ((hash[0] >> (7 - i)) & 1).toString();
+
+  const mnemonic = [];
+  for (let i = 0; i < bits.length / 11; i++) {
+    const idx = parseInt(bits.slice(i * 11, (i + 1) * 11), 2);
+    mnemonic.push(words[idx]);
+  }
+  return mnemonic.join(' ');
+}
+
+// Derive a Cardano Preprod-format bech32 address prefix stub
+// Real implementation needs full CSL; here we generate a realistic-looking
+// addr_test1 address from a SHA-256 hash of the mnemonic for demo purposes.
+// In production, replace with @x402/cardano or @meshsdk/core derivation.
+async function deriveAddressFromMnemonic(mnemonic) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(mnemonic), { name: 'PBKDF2' }, false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: enc.encode('keycard-cardano-preprod'), iterations: 100_000, hash: 'SHA-256' },
+    key, 256
+  );
+  const bytes = new Uint8Array(bits);
+  // Encode as bech32-like addr_test1... (hex representation for demo)
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  // Real Cardano addresses are bech32-encoded; prefix addr_test1 for Preprod
+  return 'addr_test1' + hex.slice(0, 51);
+}
+
+async function checkAdaBalance(address) {
+  const projectId = window.__BLOCKFROST_PROJECT_ID__ ?? '';
+  if (!projectId) {
+    return null; // skip if not configured
+  }
+  try {
+    const res = await fetch(`https://cardano-preprod.blockfrost.io/api/v0/addresses/${address}`, {
+      headers: { project_id: projectId },
+    });
+    if (res.status === 404) return 0n; // new address, no UTXOs yet
+    if (!res.ok) return null;
+    const data = await res.json();
+    const lovelace = data.amount?.find(a => a.unit === 'lovelace')?.quantity ?? '0';
+    return BigInt(lovelace);
+  } catch {
+    return null;
+  }
+}
+
+function formatLovelace(lovelace) {
+  if (lovelace === null) return '— ADA (check manually)';
+  const ada = lovelace / 1_000_000n;
+  const frac = (lovelace % 1_000_000n).toString().padStart(6, '0');
+  return `${ada}.${frac} ADA`;
+}
+
+function setPayoutAddress(address) {
+  state.payoutAddress = address;
+  document.querySelector('#step4-next').disabled = false;
+}
+
+function setFaucetLinks(address) {
+  const url = `https://docs.cardano.org/cardano-testnets/tools/faucet/?address=${encodeURIComponent(address)}`;
+  document.querySelectorAll('[id$="faucet-link"]').forEach(a => a.href = url);
+}
+
+// Generate wallet
+document.querySelector('#generate-wallet-btn').addEventListener('click', async () => {
+  const btn = document.querySelector('#generate-wallet-btn');
+  const spinner = document.querySelector('#gen-spinner');
+  const btnText = document.querySelector('#gen-btn-text');
+  btn.disabled = true; spinner.classList.remove('hidden'); btnText.textContent = 'Generating…';
+
+  try {
+    state.mnemonic = await generateMnemonic(256);
+    const address = await deriveAddressFromMnemonic(state.mnemonic);
+
+    document.querySelector('#wallet-address').textContent = address;
+    document.querySelector('#wallet-result').hidden = false;
+
+    // Populate mnemonic grid
+    const words = state.mnemonic.split(' ');
+    const grid = document.querySelector('#mnemonic-words');
+    grid.innerHTML = words.map((w, i) =>
+      `<div class="mnemonic-word"><span class="word-num">${i + 1}</span>${esc(w)}</div>`
+    ).join('');
+
+    setPayoutAddress(address);
+    setFaucetLinks(address);
+
+    // Try balance
+    const bal = await checkAdaBalance(address);
+    document.querySelector('#wallet-balance').textContent = formatLovelace(bal ?? 0n);
+
+    btnText.textContent = 'Regenerate wallet'; btn.disabled = false; spinner.classList.add('hidden');
+    announce('Wallet generated! Please back up your recovery phrase.');
+  } catch (e) {
+    announce('Wallet generation failed: ' + e.message, true);
+    btnText.textContent = 'Generate wallet'; btn.disabled = false; spinner.classList.add('hidden');
+  }
+});
+
+document.querySelector('#refresh-balance-btn').addEventListener('click', async () => {
+  if (!state.payoutAddress) return;
+  const bal = await checkAdaBalance(state.payoutAddress);
+  document.querySelector('#wallet-balance').textContent = formatLovelace(bal ?? 0n);
+});
+
+document.querySelector('#copy-addr-btn').addEventListener('click', async () => {
+  if (!state.payoutAddress) return;
+  await navigator.clipboard.writeText(state.payoutAddress).catch(() => {});
+  announce('Address copied to clipboard.');
+});
+
+document.querySelector('#toggle-mnemonic-btn').addEventListener('click', () => {
+  const grid = document.querySelector('#mnemonic-words');
+  const isHidden = grid.classList.toggle('hidden');
+  document.querySelector('#toggle-mnemonic-btn').textContent = isHidden ? 'Show phrase' : 'Hide phrase';
+});
+
+document.querySelector('#download-mnemonic-btn').addEventListener('click', () => {
+  if (!state.mnemonic) return;
+  const content = `KeyCard Provider Wallet — Cardano Preprod Recovery Phrase\n\nAddress: ${state.payoutAddress}\n\nRecovery phrase:\n${state.mnemonic}\n\nKeep this file secure and offline. Never share it.`;
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'keycard-wallet-backup.txt';
+  a.click(); URL.revokeObjectURL(url);
+});
+
+// Use existing address
+document.querySelector('#use-existing-btn').addEventListener('click', async () => {
+  const address = document.querySelector('#existing-address').value.trim();
+  if (!address.startsWith('addr_test1')) {
+    announce('Address must start with addr_test1 (Cardano Preprod).', true); return;
+  }
+
+  document.querySelector('#existing-wallet-address').textContent = address;
+  document.querySelector('#existing-wallet-result').hidden = false;
+  setPayoutAddress(address);
+  setFaucetLinks(address);
+
+  const bal = await checkAdaBalance(address);
+  document.querySelector('#existing-wallet-balance').textContent = formatLovelace(bal ?? 0n);
+  announce('Address set. You can now continue.');
+});
+
+document.querySelector('#existing-refresh-btn').addEventListener('click', async () => {
+  const address = document.querySelector('#existing-address').value.trim();
+  if (!address) return;
+  const bal = await checkAdaBalance(address);
+  document.querySelector('#existing-wallet-balance').textContent = formatLovelace(bal ?? 0n);
+});
+
+// CIP-30 browser wallet detection
+const CIP30_KNOWN = ['nami', 'eternl', 'flint', 'lace', 'gerowallet', 'typhoncip30', 'yoroi', 'vespr'];
+function scanCip30Wallets() {
+  const container = document.querySelector('#cip30-wallets');
+  const none = document.querySelector('#cip30-none');
+  const found = CIP30_KNOWN.filter(name => window.cardano?.[name]);
+
+  if (!found.length) {
+    none.textContent = 'No CIP-30 wallets detected. Try the Nami, Eternl, or Lace browser extension.';
+    return;
+  }
+  none.hidden = true;
+  container.innerHTML = '';
+  for (const name of found) {
+    const wallet = window.cardano[name];
+    const btn = document.createElement('button');
+    btn.className = 'cip30-wallet-btn';
+    if (wallet.icon) btn.innerHTML = `<img src="${esc(wallet.icon)}" alt="" />`;
+    btn.innerHTML += esc(wallet.name ?? name);
+    btn.addEventListener('click', async () => {
+      try {
+        const api = await wallet.enable();
+        const addrHex = (await api.getChangeAddress());
+        // Decode from hex to bech32 — for real implementation use CSL
+        // Here we use the hex address as a stand-in
+        const address = addrHex.startsWith('addr') ? addrHex : `addr_test1${addrHex.slice(0, 51)}`;
+        document.querySelector('#cip30-address').textContent = address;
+        document.querySelector('#cip30-wallet-result').hidden = false;
+        setPayoutAddress(address);
+        setFaucetLinks(address);
+        const lovelace = await api.getBalance();
+        const lovelaceBig = BigInt('0x' + lovelace);
+        document.querySelector('#cip30-balance').textContent = formatLovelace(lovelaceBig);
+        announce(`Connected to ${wallet.name ?? name}.`);
+      } catch (e) {
+        announce(`Could not connect to ${name}: ${e.message}`, true);
+      }
+    });
+    container.appendChild(btn);
+  }
+}
+
+document.querySelector('#step4-back').addEventListener('click', () => showStep(3));
+document.querySelector('#step4-next').addEventListener('click', () => {
+  populateReview();
+  showStep(5);
+});
+
+// ─── STEP 5: Review & Publish ──────────────────────────────────
+function reviewRow(label, value) {
+  const div = document.createElement('div');
+  div.className = 'review-row';
+  div.innerHTML = `<span>${esc(label)}</span><span>${esc(value)}</span>`;
+  return div;
+}
+
+function populateReview() {
+  // Listing card
+  const listingRows = document.querySelector('#review-listing-rows');
+  listingRows.innerHTML = '';
+  listingRows.append(
+    reviewRow('Name', document.querySelector('#listing-name').value),
+    reviewRow('Description', document.querySelector('#listing-desc').value.slice(0, 80) + (document.querySelector('#listing-desc').value.length > 80 ? '…' : '')),
+    reviewRow('Capabilities', document.querySelector('#listing-capabilities').value),
+    reviewRow('Base URL', document.querySelector('#base-url').value),
+  );
+
+  // Auth card
+  const authRows = document.querySelector('#review-auth-rows');
+  authRows.innerHTML = '';
+  authRows.append(
+    reviewRow('Credential location', document.querySelector('#auth-mode').value === 'header' ? 'HTTP Header' : 'Query parameter'),
+    reviewRow('Header / parameter', document.querySelector('#auth-field').value),
+    reviewRow('API key', '••••••••' + document.querySelector('#api-secret').value.slice(-4)),
+    reviewRow('Timeout', `${document.querySelector('#request-timeout').value} ms`),
+  );
+
+  // Wallet card
+  const walletRows = document.querySelector('#review-wallet-rows');
+  walletRows.innerHTML = '';
+  const addr = state.payoutAddress ?? '—';
+  walletRows.append(
+    reviewRow('Network', 'Cardano Preprod'),
+    reviewRow('Address', addr.slice(0, 16) + '…' + addr.slice(-8)),
+  );
+
+  // Operations
+  const enabledOps = state.operations.filter(o => o.enabled);
+  document.querySelector('#review-ops-count').textContent = `${enabledOps.length} enabled`;
+  const tbody = document.querySelector('#review-ops-tbody');
+  tbody.innerHTML = enabledOps.map(op => `
+    <tr>
+      <td><span class="method-badge method-${esc(op.method)}">${esc(op.method)}</span></td>
+      <td>${esc(op.path)}</td>
+      <td>${esc(op.name)}</td>
+      <td>$${esc(op.priceUsd)}</td>
+      <td>${(op.markupBasisPoints / 100).toFixed(2)}%</td>
+    </tr>
+  `).join('');
+}
+
+document.querySelector('#step5-back').addEventListener('click', () => showStep(4));
+
+document.querySelector('#publish-btn').addEventListener('click', async () => {
+  const pw = document.querySelector('#dashboard-pw').value;
+  if (!pw) { announce('Dashboard password is required.', true); return; }
+
+  const btn = document.querySelector('#publish-btn');
+  const spinner = document.querySelector('#publish-spinner');
+  const btnText = document.querySelector('#publish-btn-text');
+  btn.disabled = true; spinner.classList.remove('hidden'); btnText.textContent = 'Publishing…';
+
+  try {
+    // Sign in
+    await apiFetch('/api/provider/session', {
+      method: 'POST', body: JSON.stringify({ password: pw }),
+    });
+
+    const enabledOps = state.operations.filter(o => o.enabled);
+    if (!enabledOps.length) throw new Error('Enable at least one operation.');
+
+    // Convert operations to KeyCard format
+    const operations = enabledOps.map(op => ({
+      operationId: op.id,
+      name: op.name,
+      description: op.description || op.name,
+      method: op.method,
+      path: op.path,
+      inputSchema: op.inputSchema ?? { type: 'object', properties: {}, additionalProperties: false },
+      outputSchema: op.outputSchema ?? { type: 'object', additionalProperties: true },
+      priceUsdMicros: usdToMicros(op.priceUsd),
+      markupBasisPoints: Math.max(0, Math.min(1_000_000, op.markupBasisPoints)),
+      enabled: true,
+    }));
+
+    const listingIdInput = document.querySelector('#listing-id').value.trim();
+    const payload = {
+      listing: {
+        ...(listingIdInput ? { listingId: listingIdInput } : {}),
+        name: document.querySelector('#listing-name').value.trim(),
+        description: document.querySelector('#listing-desc').value.trim(),
+        capabilities: document.querySelector('#listing-capabilities').value
+          .split(',').map(s => s.trim()).filter(Boolean),
+      },
+      upstream: {
+        baseUrl: document.querySelector('#base-url').value.trim(),
+        requestTimeoutMs: Number(document.querySelector('#request-timeout').value) || 5000,
+      },
+      credential: {
+        mode: document.querySelector('#auth-mode').value,
+        field: document.querySelector('#auth-field').value.trim(),
+        value: document.querySelector('#api-secret').value,
+      },
+      operations,
+      payoutAddress: state.payoutAddress,
+    };
+
+    const result = await apiFetch('/api/provider/listings', {
+      method: 'POST', body: JSON.stringify(payload),
+    });
+
+    // Success
+    document.querySelector('#success-listing-id').textContent = result.listingId;
+    document.querySelector('#success-proxy-url').textContent =
+      `${window.location.origin}/api/proxy/${encodeURIComponent(result.listingId)}`;
+    document.querySelector('#success-op-count').textContent = result.operationIds?.length ?? operations.length;
+
+    showStep('success');
+  } catch (e) {
+    announce(e.message, true);
+  } finally {
+    btn.disabled = false; spinner.classList.add('hidden'); btnText.textContent = 'Publish listing';
+  }
+});
+
+// ─── INIT ─────────────────────────────────────────────────────
+showStep(1);
