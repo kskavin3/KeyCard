@@ -13,6 +13,8 @@ import { issueQuote, issueQuoteForOperation, paymentGateway } from './payments.j
 import { createPaidHandler, PgCallStore } from './paid-calls.js';
 import { effectivePriceLovelace } from './money.js';
 import { providerPaymentsRouter } from './modules/provider-payments/router.js';
+import { resolvePublicOrigin } from './public-origin.js';
+import { resolveOperationRequest } from './operation-request.js';
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 (addFormatsPlugin as unknown as (instance: Ajv2020) => void)(ajv);
@@ -51,8 +53,7 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
 app.use('/provider', express.static(resolve(process.cwd(), 'public/provider'), { index: 'index.html' }));
 
-const publicOrigin = process.env.KEYCARD_PUBLIC_ORIGIN
-  ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : 'http://localhost:4020');
+const publicOrigin = resolvePublicOrigin();
 const defaultProviderId = process.env.KEYCARD_PROVIDER_ID ?? 'provider-demo';
 const providerName = process.env.KEYCARD_PROVIDER_NAME ?? 'KeyCard Demo Provider';
 const minimumLovelace = BigInt(process.env.KEYCARD_MIN_PAYMENT_LOVELACE ?? '1500000');
@@ -152,15 +153,17 @@ async function forwardUpstream(listingId: string, operationId: string, req: Requ
   const validateInput = ajv.compile(row.input_schema);
   if (!validateInput(input)) throw Object.assign(new Error('Request does not match the operation input schema.'), { status: 400 });
 
+  const requestInput = input as Record<string, unknown>;
+  const resolvedRequest = resolveOperationRequest(row.path, requestInput);
   const baseUrl = new URL(row.base_url);
-  const destination = new URL(row.path, baseUrl);
+  const destination = new URL(resolvedRequest.path, baseUrl);
   const credential = decryptCredential(row);
   const headers: Record<string, string> = { accept: 'application/json' };
   for (const [name, value] of Object.entries(row.static_headers ?? {})) headers[name] = String(value);
   if (row.auth_mode === 'header') headers[row.auth_field] = credential;
   if (!['GET', 'DELETE'].includes(row.method)) headers['content-type'] = 'application/json';
 
-  const queryOrBody = input as Record<string, unknown>;
+  const queryOrBody = resolvedRequest.input;
   if (row.method === 'GET' || row.method === 'DELETE') {
     for (const [key, value] of Object.entries(queryOrBody)) {
       if (value === undefined || value === null) continue;
@@ -175,7 +178,7 @@ async function forwardUpstream(listingId: string, operationId: string, req: Requ
     upstream = await safeFetch(destination, row.allowed_hosts, {
       method: row.method,
       headers,
-      body: ['GET', 'DELETE'].includes(row.method) ? undefined : JSON.stringify(input),
+      body: ['GET', 'DELETE'].includes(row.method) ? undefined : JSON.stringify(resolvedRequest.input),
       redirect: 'error',
       signal: AbortSignal.timeout(row.request_timeout_ms),
     });
