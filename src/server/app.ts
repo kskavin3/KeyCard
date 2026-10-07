@@ -51,7 +51,8 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
 app.use('/provider', express.static(resolve(process.cwd(), 'public/provider'), { index: 'index.html' }));
 
-const publicOrigin = process.env.KEYCARD_PUBLIC_ORIGIN ?? 'http://localhost:4020';
+const publicOrigin = process.env.KEYCARD_PUBLIC_ORIGIN
+  ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : 'http://localhost:4020');
 const defaultProviderId = process.env.KEYCARD_PROVIDER_ID ?? 'provider-demo';
 const providerName = process.env.KEYCARD_PROVIDER_NAME ?? 'KeyCard Demo Provider';
 const minimumLovelace = BigInt(process.env.KEYCARD_MIN_PAYMENT_LOVELACE ?? '1500000');
