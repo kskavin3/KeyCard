@@ -43,6 +43,11 @@ docker compose up -d postgres
 npm run dev
 ```
 
+For hosted storage, set `DATABASE_URL` to a Supabase direct or session-pooler
+PostgreSQL connection string instead of starting the local container. KeyCard
+requires SSL for Supabase connections and applies `src/server/schema.sql` on
+backend startup.
+
 Set a private `KEYCARD_DASHBOARD_PASSWORD` in `.env` before starting. The console is served at `http://127.0.0.1:4020/provider/`; the landing page remains at Vite's printed address. The proxy supports provider-authenticated previews and payment-gated public calls. Configure payment settings before issuing quotes.
 
 See [paid-call setup, wallet commands, retry contract, and refund policy](docs/paid-calls.md). Run `npm run test:payments` for PostgreSQL integration coverage. The [agent skill](skills/keycard-agent/SKILL.md) covers wallet setup and paid-call instructions. Public calls require a stable secret `Idempotency-Key` alongside the x402 headers.
