@@ -4,6 +4,7 @@ import type { Request, Response, NextFunction } from 'express';
 import type { PaymentPayload, PaymentRequirements, SettleResponse, VerifyResponse } from '@x402/core/types';
 import { decodePaymentSignatureHeader, encodePaymentRequiredHeader, encodePaymentResponseHeader } from '@x402/core/http';
 import { jcs } from '@x402/cardano';
+import { publicRequestUrl } from './request-url.js';
 
 type State = 'quoted' | 'verified' | 'executing' | 'result_ready' | 'settling' | 'completed' | 'failed' | 'review';
 export type PaidCall = {
@@ -82,6 +83,7 @@ export type PaymentGateway = {
 };
 type Dependencies = {
   store: CallStore; gateway: PaymentGateway; origin: string; now?: () => number;
+  isVercel?: boolean;
   quote(path: string): Promise<{ requirements: PaymentRequirements; providerId: string; listingId: string; operationId: string }>;
   upstream(req: Request): Promise<unknown>;
 };
@@ -140,7 +142,7 @@ export function createPaidHandler(deps: Dependencies) {
         if (call.state === 'quoted') {
           if (new Date(call.expires_at).getTime() <= now()) throw fail('Quote expired. Start a new unpaid call with a new Idempotency-Key.', 410);
           if (!payload) {
-            const challenge = { x402Version: 2, resource: { url: new URL(req.originalUrl, deps.origin).href,
+            const challenge = { x402Version: 2, resource: { url: publicRequestUrl(req.originalUrl, req.path, deps.origin, deps.isVercel ?? false),
               description: 'KeyCard paid API call', mimeType: 'application/json' }, accepts: [call.requirements] };
             return { status: 402, headers: { 'PAYMENT-REQUIRED': encodePaymentRequiredHeader(challenge) },
               body: { ...challenge, quote: { expiresAt: call.expires_at, requestHash: `sha256:${fingerprint}` } } } satisfies ResponsePlan;

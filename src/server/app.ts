@@ -14,6 +14,7 @@ import { createPaidHandler, PgCallStore } from './paid-calls.js';
 import { effectivePriceLovelace } from './money.js';
 import { providerPaymentsRouter } from './modules/provider-payments/router.js';
 import { resolveOperationRequest } from './operation-request.js';
+import { withoutVercelRewriteQuery } from './request-url.js';
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 (addFormatsPlugin as unknown as (instance: Ajv2020) => void)(ajv);
@@ -61,6 +62,7 @@ const publicOrigin = vercelHost && (!configuredOrigin || configuredIsLocal)
   ? `https://${vercelHost.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
   : configuredOrigin ?? 'http://localhost:4020';
 const defaultProviderId = process.env.KEYCARD_PROVIDER_ID ?? 'provider-demo';
+const isVercel = process.env.VERCEL === '1';
 const providerName = process.env.KEYCARD_PROVIDER_NAME ?? 'KeyCard Demo Provider';
 const minimumLovelace = BigInt(process.env.KEYCARD_MIN_PAYMENT_LOVELACE ?? '1500000');
 
@@ -155,7 +157,9 @@ async function forwardUpstream(listingId: string, operationId: string, req: Requ
   if (row.availability !== 'available' || !row.enabled) throw Object.assign(new Error('Operation is unavailable.'), { status: 409 });
   if (!preview && req.method !== row.method) throw Object.assign(new Error(`Use ${row.method} for this operation.`), { status: 405 });
 
-  const input = preview ? (req.body ?? {}) : (row.method === 'GET' || row.method === 'DELETE' ? req.query : (req.body ?? {}));
+  const input = preview ? (req.body ?? {}) : (row.method === 'GET' || row.method === 'DELETE'
+    ? withoutVercelRewriteQuery(req.query as Record<string, unknown>, req.path, isVercel)
+    : (req.body ?? {}));
   const validateInput = ajv.compile(row.input_schema);
   if (!validateInput(input)) throw Object.assign(new Error('Request does not match the operation input schema.'), { status: 400 });
 
@@ -543,7 +547,7 @@ app.all('/api/provider/preview/:listingId/:operationId', providerPreview);
 
 const callStore = new PgCallStore(pool);
 app.all('/api/proxy/:listingId/:operationId', createPaidHandler({
-  store: callStore, gateway: paymentGateway, origin: publicOrigin, quote: issueQuote,
+  store: callStore, gateway: paymentGateway, origin: publicOrigin, isVercel, quote: issueQuote,
   upstream: req => forwardUpstream(String(req.params.listingId), String(req.params.operationId), req),
 }));
 
@@ -563,6 +567,7 @@ app.all('/api/proxy/:proxyId', async (req, res, next) => {
       store: callStore,
       gateway: paymentGateway,
       origin: publicOrigin,
+      isVercel,
       quote: () => issueQuoteForOperation(operation.listing_id, operation.operation_id),
       upstream: request => forwardUpstream(operation.listing_id, operation.operation_id, request),
     });
@@ -635,6 +640,7 @@ app.post('/api/call/:providerId', async (req, res, next) => {
         store: callStore,
         gateway: paymentGateway,
         origin: publicOrigin,
+        isVercel,
         quote: () => issueQuoteForOperation(op.listing_id, op.operation_id),
         upstream: request => forwardUpstream(op.listing_id, op.operation_id, request),
       });
