@@ -465,28 +465,61 @@ app.patch(['/api/provider/listings/:listingId/availability', '/api/registry/serv
 
 app.get(['/api/discovery', '/api/registry/services'], async (req, res, next) => {
   try {
-    const terms = typeof req.query.capability === 'string' ? req.query.capability.toLowerCase() : undefined;
-    const search = typeof req.query.q === 'string' && req.query.q.trim() ? `%${req.query.q.trim()}%` : undefined;
+    const term = (value: unknown, name: string) => {
+      if (value === undefined) return undefined;
+      if (typeof value !== 'string') throw invalid(`${name} must be a single string.`);
+      const normalized = value.trim().toLowerCase();
+      if (!normalized || normalized.length > 100) throw invalid(`${name} must contain 1-100 characters.`);
+      return normalized;
+    };
+    const capability = term(req.query.capability, 'capability');
+    const query = term(req.query.query ?? req.query.q, 'query');
+    const rawLimit = req.query.limit;
+    const limit = rawLimit === undefined ? 20 : Number(rawLimit);
+    if (typeof rawLimit !== 'undefined' && (typeof rawLimit !== 'string' || !Number.isInteger(limit) || limit < 1 || limit > 50)) {
+      throw invalid('limit must be an integer from 1 to 50.');
+    }
+    // ponytail: substring ranking scans the MVP registry; add Postgres full-text
+    // search or a trigram index when listing volume makes this measurably slow.
     const listingsResult = await pool.query(
-      `SELECT * FROM api_listings
-       WHERE availability = 'available'
-         AND EXISTS (SELECT 1 FROM api_operations o WHERE o.listing_id = api_listings.listing_id AND o.enabled = TRUE)
+      `SELECT l.*,
+        ((CASE WHEN $1::text IS NOT NULL AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(l.capabilities) c(value) WHERE lower(c.value) = $1
+          ) THEN 100 ELSE 0 END) +
+         (CASE WHEN $2::text IS NOT NULL AND (lower(l.name) = $2 OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(l.capabilities) c(value) WHERE lower(c.value) = $2
+          )) THEN 80 ELSE 0 END) +
+         (CASE WHEN $2::text IS NOT NULL AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(l.capabilities) c(value) WHERE position($2 in lower(c.value)) > 0
+          ) THEN 40 ELSE 0 END) +
+         (CASE WHEN $2::text IS NOT NULL AND position($2 in lower(l.name)) > 0 THEN 30 ELSE 0 END) +
+         (CASE WHEN $2::text IS NOT NULL AND EXISTS (
+            SELECT 1 FROM api_operations o WHERE o.listing_id = l.listing_id AND o.enabled = TRUE
+              AND (position($2 in lower(o.name)) > 0 OR position($2 in lower(o.description)) > 0)
+          ) THEN 20 ELSE 0 END) +
+         (CASE WHEN $2::text IS NOT NULL AND position($2 in lower(l.description)) > 0 THEN 10 ELSE 0 END)
+        )::integer AS relevance_score
+       FROM api_listings l
+       WHERE l.availability = 'available'
+         AND EXISTS (SELECT 1 FROM api_operations o WHERE o.listing_id = l.listing_id AND o.enabled = TRUE)
          AND ($1::text IS NULL OR EXISTS (
-           SELECT 1 FROM jsonb_array_elements_text(capabilities) c(value) WHERE lower(c.value) = $1
+           SELECT 1 FROM jsonb_array_elements_text(l.capabilities) c(value) WHERE lower(c.value) = $1
          ))
-         AND ($2::text IS NULL OR name ILIKE $2 OR description ILIKE $2 OR EXISTS (
-           SELECT 1 FROM jsonb_array_elements_text(capabilities) c(value) WHERE c.value ILIKE $2
-         ))
-       ORDER BY updated_at DESC`,
-      [terms ?? null, search ?? null],
+         AND ($2::text IS NULL OR position($2 in lower(l.name)) > 0 OR position($2 in lower(l.description)) > 0
+           OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(l.capabilities) c(value) WHERE position($2 in lower(c.value)) > 0)
+           OR EXISTS (SELECT 1 FROM api_operations o WHERE o.listing_id = l.listing_id AND o.enabled = TRUE
+             AND (position($2 in lower(o.name)) > 0 OR position($2 in lower(o.description)) > 0)))
+       ORDER BY relevance_score DESC, l.updated_at DESC
+       LIMIT $3`,
+      [capability ?? null, query ?? null, limit],
     );
     const items = [];
     for (const row of listingsResult.rows) {
       const operationRows = await getListingOperations(row.listing_id, true);
       const operations = operationRows.map(safePublicOperation);
-      items.push({ ...safePublicListing(row, operations), operations });
+      items.push({ ...safePublicListing(row, operations), relevanceScore: Number(row.relevance_score), operations });
     }
-    return res.json({ items });
+    return res.json({ query: query ?? null, capability: capability ?? null, count: items.length, items });
   } catch (error) { return next(error); }
 });
 
@@ -546,6 +579,102 @@ app.get('/api/registry/services/:listingId', async (req, res, next) => {
 });
 
 app.use('/api/provider', providerPaymentsRouter);
+
+// --- Provider-level call endpoint ---
+// POST /api/call/:providerId
+//   Without PAYMENT-SIGNATURE: returns per-operation fee quotes
+//   With PAYMENT-SIGNATURE + operationId: executes the paid call for that operation
+app.post('/api/call/:providerId', async (req, res, next) => {
+  try {
+    const providerId = String(req.params.providerId);
+    if (!validId(providerId)) return res.status(400).json({ error: 'Invalid provider ID.' });
+
+    // Look up all enabled operations for this provider
+    const listingsResult = await pool.query(
+      `SELECT l.listing_id FROM api_listings l
+       WHERE l.provider_id = $1 AND l.availability = 'available'`,
+      [providerId],
+    );
+    if (listingsResult.rows.length === 0) return res.status(404).json({ error: 'Provider not found or has no available listings.' });
+    const listingIds = listingsResult.rows.map(r => r.listing_id);
+
+    const opsResult = await pool.query(
+      `SELECT o.operation_id, o.listing_id, o.name, o.description, o.method, o.path,
+              o.input_schema, o.price_lovelace, o.markup_basis_points, o.proxy_id
+         FROM api_operations o
+        WHERE o.listing_id = ANY($1::text[]) AND o.enabled = TRUE
+        ORDER BY o.listing_id, o.operation_id`,
+      [listingIds],
+    );
+    const allOps = opsResult.rows;
+    if (allOps.length === 0) return res.status(404).json({ error: 'Provider has no enabled operations.' });
+
+    // If there's a PAYMENT-SIGNATURE, the caller wants to execute a specific operation
+    if (req.get('PAYMENT-SIGNATURE')) {
+      const operationId = req.body?.operationId;
+      if (typeof operationId !== 'string') return res.status(400).json({ error: 'Provide operationId in the request body when paying.' });
+      const op = allOps.find(o => o.operation_id === operationId);
+      if (!op) return res.status(404).json({ error: `Operation '${operationId}' not found for this provider.` });
+
+      // Delegate to the standard paid-call handler. Rewrite params so forwardUpstream works.
+      (req.params as any).listingId = op.listing_id;
+      (req.params as any).operationId = op.operation_id;
+      // The input for the upstream call is in body.input
+      if (req.body?.input !== undefined) req.body = req.body.input;
+
+      const handler = createPaidHandler({
+        store: callStore,
+        gateway: paymentGateway,
+        origin: publicOrigin,
+        quote: () => issueQuoteForOperation(op.listing_id, op.operation_id),
+        upstream: request => forwardUpstream(op.listing_id, op.operation_id, request),
+      });
+      return handler(req, res, next);
+    }
+
+    // No payment header → return fee quotes for requested operations
+    const requested: Array<{ operationId: string; input?: unknown }> = Array.isArray(req.body?.operations) ? req.body.operations : [];
+    // If no specific operations requested, quote all available ones
+    const opsToQuote = requested.length > 0
+      ? requested.map(r => {
+          const op = allOps.find(o => o.operation_id === r.operationId);
+          if (!op) throw Object.assign(new Error(`Operation '${r.operationId}' not found for this provider.`), { status: 404 });
+          return op;
+        })
+      : allOps;
+
+    const quotes = await Promise.all(opsToQuote.map(async op => {
+      const quote = await issueQuoteForOperation(op.listing_id, op.operation_id);
+      return {
+        operationId: op.operation_id,
+        listingId: op.listing_id,
+        name: op.name,
+        description: op.description,
+        method: op.method,
+        path: op.path,
+        pricing: {
+          priceLovelace: String(op.price_lovelace),
+          effectivePriceLovelace: effectivePriceLovelace(String(op.price_lovelace), op.markup_basis_points, minimumLovelace),
+          asset: 'lovelace',
+          markupBasisPoints: op.markup_basis_points,
+        },
+        paymentRequirements: quote.requirements,
+        proxyUrl: `${publicOrigin.replace(/\/$/, '')}/api/proxy/${encodeURIComponent(String(op.proxy_id))}`,
+      };
+    }));
+
+    return res.json({
+      providerId,
+      endpoint: `${publicOrigin.replace(/\/$/, '')}/api/call/${encodeURIComponent(providerId)}`,
+      operations: quotes,
+      usage: {
+        step1: 'POST this endpoint with { "operations": [{ "operationId": "...", "input": {...} }] } to get fee quotes.',
+        step2: 'POST this endpoint with { "operationId": "...", "input": {...} } plus Idempotency-Key and PAYMENT-SIGNATURE headers to execute a paid call.',
+        note: 'Each operation is paid independently. Submit one PAYMENT-SIGNATURE per operation.',
+      },
+    });
+  } catch (error) { next(error); }
+});
 
 app.use((error: any, _req: Request, res: Response, _next: unknown) => {
   const status = Number.isInteger(error?.status) ? error.status : 500;

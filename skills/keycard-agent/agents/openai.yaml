@@ -1,0 +1,4 @@
+interface:
+  display_name: "KeyCard Agent"
+  short_description: "Discover, purchase, and vault KeyCard access"
+  default_prompt: "Use $keycard-agent with the hosted KeyCard server to find the cheapest suitable API and call it within my budget."

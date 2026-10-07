@@ -51,6 +51,11 @@ The open registry console is served at `http://127.0.0.1:4020/provider/`; the la
 
 Registry clients can use `GET /api/registry/services`, filter with `?capability=weather` or free-text `?q=forecast`, inspect one service at `GET /api/registry/services/:listingId`, and publish with `POST /api/registry/services`. Each operation includes its opaque paid proxy URL. The legacy `GET /api/discovery` and provider-console routes remain available for compatibility.
 
+Agents can retrieve relevant, available APIs as JSON with
+`GET /api/discovery?query=weather&limit=20`. Use `capability=weather` instead of
+`query` for an exact capability match. Results include a relevance score,
+operation schemas, effective lovelace pricing, and the operation's proxy URL.
+
 See [paid-call setup, wallet commands, retry contract, and refund policy](docs/paid-calls.md). Run `npm run test:payments` for PostgreSQL integration coverage. The [agent skill](skills/keycard-agent/SKILL.md) covers wallet setup and paid-call instructions. Public calls require a stable secret `Idempotency-Key` alongside the x402 headers.
 
 ## Actors and parties involved
@@ -150,6 +155,15 @@ Discovery and checkout must show comparable total costs, including applicable ne
 ## Agent skill
 
 KeyCard will provide an installable agent skill covering wallet setup, optional funding, discovery, and API access.
+
+Install the skill for the current user directly from GitHub:
+
+```sh
+npx --yes git+https://github.com/kskavin3/KeyCard.git
+```
+
+Add `--project` to install into the current project's `.codex/skills` directory,
+or use `--force` to replace an existing installation.
 
 1. **Set up a Cardano account.** Connect an existing wallet or create a dedicated agent wallet, select the network, and configure spending limits. Keep signing keys in the agent's local wallet or signer.
 2. **Fund the agent wallet, optionally.** Show the receiving address and balance, and guide the user through funding. An unfunded agent can attempt the sponsorship flow.

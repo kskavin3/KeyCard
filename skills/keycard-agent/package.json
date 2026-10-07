@@ -1,0 +1,25 @@
+{
+  "name": "keycard-agent-skill",
+  "version": "0.1.1",
+  "description": "Install the KeyCard agent skill for Codex.",
+  "type": "module",
+  "bin": {
+    "keycard-agent-skill": "bin/install.mjs"
+  },
+  "files": [
+    "SKILL.md",
+    "agents",
+    "scripts",
+    "bin"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "codex",
+    "agent-skill",
+    "cardano",
+    "x402"
+  ],
+  "license": "UNLICENSED"
+}

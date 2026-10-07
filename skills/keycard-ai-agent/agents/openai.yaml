@@ -1,4 +1,0 @@
-interface:
-  display_name: "KeyCard AI Agent"
-  short_description: "Discover and purchase KeyCard API access"
-  default_prompt: "Use $keycard-ai-agent to find the cheapest suitable KeyCard API and call it within my budget."
