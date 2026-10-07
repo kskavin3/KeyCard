@@ -182,5 +182,32 @@ document.querySelector('#copy-request').addEventListener('click', async () => {
   }
 });
 
+const skillScope = document.querySelector('#skill-scope');
+const skillCommand = document.querySelector('#skill-command');
+const skillLocation = document.querySelector('#skill-location');
+const installCommand = skillCommand.textContent;
+
+skillScope.addEventListener('change', () => {
+  const project = skillScope.value === 'project';
+  skillCommand.textContent = installCommand + (project ? ' --project' : '');
+  skillLocation.textContent = project
+    ? 'Saved in .codex/skills/keycard-agent inside your current project. Run from the project folder.'
+    : 'Saved in ~/.codex/skills/keycard-agent, or your configured Codex skills directory.';
+});
+
+document.querySelector('#copy-skill').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(skillCommand.textContent);
+    showToast('Install command copied. Paste it into your terminal.');
+  } catch {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(skillCommand);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    showToast('Clipboard unavailable. Select and copy the command above.');
+  }
+});
+
 document.querySelector('#year').textContent = new Date().getFullYear();
 updatePreview();

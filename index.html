@@ -36,6 +36,7 @@
         <nav class="desktop-nav" aria-label="Main navigation">
           <a href="#how-it-works">How it works</a>
           <a href="#playground">Try the demo</a>
+          <a href="#install-skill">Install the skill</a>
           <a href="/provider/">Provider dashboard</a>
         </nav>
         <div class="nav-actions">
@@ -47,8 +48,9 @@
         <a href="#how-it-works">How it works <span>01</span></a>
         <a href="#ecosystem">Who it's for <span>02</span></a>
         <a href="#playground">Try the demo <span>03</span></a>
-        <a href="/provider/">Provider dashboard <span>04</span></a>
-        <a href="/provider/onboard.html">List your API <span>05</span></a>
+        <a href="#install-skill">Install the skill <span>04</span></a>
+        <a href="/provider/">Provider dashboard <span>05</span></a>
+        <a href="/provider/onboard.html">List your API <span>06</span></a>
       </nav>
       <div class="reading-progress" aria-hidden="true"></div>
     </header>
@@ -95,7 +97,7 @@
         <div class="section-heading reveal"><div><span class="eyebrow"><span class="tiny-square"></span> A BETTER EXCHANGE</span><h2 id="ecosystem-title">Good for your agent.<br /><span class="muted">Great for providers.</span></h2></div><p>Providers publish access. Agents discover and pay per call.<br />One open ecosystem.</p></div>
         <div class="audience-grid">
           <article class="audience-card reveal"><div class="audience-top"><span class="mono">01 / API PROVIDERS</span><svg class="icon"><use href="#icon-code" /></svg></div><div class="mini-visual provider-visual" aria-hidden="true"><div class="api-token">{ }</div><span class="connector"><i></i></span><div class="key-token"><svg><use href="#icon-mark" /></svg></div><span class="connector"><i></i></span><div class="ada-token">₳</div></div><h3>Your API. A new audience.</h3><p>Bring your API key. Set your markup. Turn your existing service into something agents can discover and pay for.</p><a class="card-link" href="#how-it-works">Open the door <svg class="icon"><use href="#icon-arrow" /></svg></a></article>
-          <article class="audience-card reveal"><div class="audience-top"><span class="mono">02 / AGENT BUILDERS</span><svg class="icon"><use href="#icon-spark" /></svg></div><div class="mini-visual agent-visual" aria-hidden="true"><div class="price-row"><span><i></i> API Alpha</span><span>₳ 0.08</span></div><div class="price-row best"><span><i></i> API Beta</span><span>₳ 0.02 <svg class="icon"><use href="#icon-check" /></svg></span></div><div class="price-row"><span><i></i> API Gamma</span><span>₳ 0.05</span></div></div><h3>Less setup. More doing.</h3><p>One skill to discover the right API, choose the lowest eligible price, and pay only for what your agent uses.</p><a class="card-link" href="#playground">Put it to work <svg class="icon"><use href="#icon-arrow" /></svg></a></article>
+          <article class="audience-card reveal"><div class="audience-top"><span class="mono">02 / AGENT BUILDERS</span><svg class="icon"><use href="#icon-spark" /></svg></div><div class="mini-visual agent-visual" aria-hidden="true"><div class="price-row"><span><i></i> API Alpha</span><span>₳ 0.08</span></div><div class="price-row best"><span><i></i> API Beta</span><span>₳ 0.02 <svg class="icon"><use href="#icon-check" /></svg></span></div><div class="price-row"><span><i></i> API Gamma</span><span>₳ 0.05</span></div></div><h3>Less setup. More doing.</h3><p>One skill to discover the right API, choose the lowest eligible price, and pay only for what your agent uses.</p><a class="card-link" href="#install-skill">Install the skill <svg class="icon"><use href="#icon-arrow" /></svg></a></article>
         </div>
         <p class="section-note">Concept illustrations. Example prices are not live quotes.</p>
       </section>
@@ -136,9 +138,37 @@
         </div>
       </section>
 
+      <section class="section skill-section container" id="install-skill" aria-labelledby="skill-title">
+        <div class="section-heading reveal">
+          <div><span class="eyebrow"><span class="tiny-square"></span> YOUR AGENT'S NEXT CAPABILITY</span><h2 id="skill-title">Install once.<br /><span class="lime">Unlock more.</span></h2></div>
+          <p>Add KeyCard to Codex. Give your agent a way to discover APIs, compare prices, and pay within your budget.</p>
+        </div>
+        <div class="skill-layout">
+          <ol class="skill-steps reveal">
+            <li><span class="step-number" aria-hidden="true">01</span><div><h3>Get your terminal ready.</h3><p>You'll need Codex, Git, and Node.js 22.12+ (or 20.19+) with npm. Run the install command on your computer.</p></div></li>
+            <li><span class="step-number" aria-hidden="true">02</span><div><h3>Choose where it belongs.</h3><p>Install for your user to share the skill across projects. For a project-only install, open your terminal in that project's folder first.</p></div></li>
+            <li><span class="step-number" aria-hidden="true">03</span><div><h3>Give it a task. Set a limit.</h3><p>Ask your agent to use <code>keycard-agent</code> to find an API. Before a paid call, set up a dedicated wallet and choose per-call and total spending limits.</p></div></li>
+          </ol>
+          <div class="skill-install reveal">
+            <div class="window-bar"><div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div><span class="mono">keycard / install</span><span class="live-label">CODEX SKILL</span></div>
+            <div class="skill-install-body">
+              <label for="skill-scope" class="eyebrow">INSTALL LOCATION</label>
+              <select id="skill-scope" aria-describedby="skill-location"><option value="user">For my user · all projects</option><option value="project">This project only</option></select>
+              <p class="skill-location" id="skill-location">Saved in <code>~/.codex/skills/keycard-agent</code>, or your configured Codex skills directory.</p>
+              <div class="skill-command-bar"><span class="mono">RUN IN YOUR TERMINAL</span><button class="copy-button skill-copy" id="copy-skill" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-copy" /></svg><span>Copy command</span></button></div>
+              <pre class="skill-command"><code id="skill-command">npx --yes git+https://github.com/kskavin3/KeyCard.git</code></pre>
+              <p class="skill-success"><svg class="icon" aria-hidden="true"><use href="#icon-check" /></svg>Look for <code>Installed keycard-agent to …</code> in your terminal.</p>
+              <details class="skill-update"><summary>Already installed?<svg class="icon" aria-hidden="true"><use href="#icon-plus" /></svg></summary><p>Add <code>--force</code> to the command to replace the existing skill in your selected location. Keep <code>--project</code> when updating a project installation.</p></details>
+            </div>
+            <div class="skill-prompt"><span class="eyebrow">THEN ASK YOUR AGENT</span><p>“Use keycard-agent to find a weather API for Singapore. Compare suitable options and show me the price before paying.”</p></div>
+          </div>
+        </div>
+        <div class="skill-next reveal"><div><svg class="icon" aria-hidden="true"><use href="#icon-cardano" /></svg><p><strong>Explore first. Fund when you're ready.</strong> Discovery needs no funded wallet. Paid calls use Preprod test ADA for the service and network fee. Wallet commands require a KeyCard checkout with dependencies installed.</p></div><a class="card-link" href="https://github.com/kskavin3/KeyCard/blob/main/docs/paid-calls.md" target="_blank" rel="noopener noreferrer">Wallet &amp; payment setup <svg class="icon" aria-hidden="true"><use href="#icon-up-right" /></svg></a></div>
+      </section>
+
       <section class="section faq-section container" id="faq" aria-labelledby="faq-title"><div class="reveal"><span class="eyebrow"><span class="tiny-square"></span> THE DETAILS</span><h2 id="faq-title">Good questions.<br /><span class="muted">Straight answers.</span></h2><p>A few things you might be wondering.</p></div><div class="faq-list reveal">
         <details><summary>What exactly is KeyCard?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>KeyCard is an access and payment layer between AI agents and traditional web APIs. Providers register their API and credentials; agents discover suitable services and pay per call in ADA through a Cardano-based x402 proxy.</p></details>
-        <details><summary>Does my agent need a funded wallet?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>Yes. The agent skill helps create a dedicated Cardano Preprod wallet, configure spending limits, and display the address to fund before a paid call.</p></details>
+        <details><summary>Does my agent need a funded wallet?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>You can install the skill and discover APIs without funding a wallet. Paid calls need Preprod test ADA for the service and network fee. <a href="#install-skill">Install the agent skill</a> to get started with a dedicated wallet and spending limits.</p></details>
         <details><summary>Who gets to see my API keys?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>KeyCard uses the provider's credentials on the server to authenticate upstream requests. Agents receive the API result, not the key. Secure credential storage, rotation, and log redaction are part of the implementation roadmap.</p></details>
         <details><summary>What is the local vault?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>The packaged skill can store user-supplied campaign context locally with a content hash and HMAC-signed integrity receipt. Vault entries are separate from KeyCard API calls.</p></details>
         <details><summary>Can I use KeyCard today?<svg class="icon"><use href="#icon-plus" /></svg></summary><p>KeyCard is currently in development, starting with a Cardano test-network implementation. This page includes an interactive concept demo. Follow the <a href="https://github.com/kskavin3/KeyCard" target="_blank" rel="noopener noreferrer">open-source repository</a> to explore the roadmap and help shape what's next.</p></details>
