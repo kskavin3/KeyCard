@@ -13,7 +13,6 @@ import { issueQuote, issueQuoteForOperation, paymentGateway } from './payments.j
 import { createPaidHandler, PgCallStore } from './paid-calls.js';
 import { effectivePriceLovelace } from './money.js';
 import { providerPaymentsRouter } from './modules/provider-payments/router.js';
-import { resolvePublicOrigin } from './public-origin.js';
 import { resolveOperationRequest } from './operation-request.js';
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
@@ -53,7 +52,14 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
 app.use('/provider', express.static(resolve(process.cwd(), 'public/provider'), { index: 'index.html' }));
 
-const publicOrigin = resolvePublicOrigin();
+const configuredOrigin = process.env.KEYCARD_PUBLIC_ORIGIN?.replace(/\/$/, '');
+const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+const configuredIsLocal = configuredOrigin
+  ? ['localhost', '127.0.0.1', '[::1]', '::1'].includes(new URL(configuredOrigin).hostname)
+  : false;
+const publicOrigin = vercelHost && (!configuredOrigin || configuredIsLocal)
+  ? `https://${vercelHost.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
+  : configuredOrigin ?? 'http://localhost:4020';
 const defaultProviderId = process.env.KEYCARD_PROVIDER_ID ?? 'provider-demo';
 const providerName = process.env.KEYCARD_PROVIDER_NAME ?? 'KeyCard Demo Provider';
 const minimumLovelace = BigInt(process.env.KEYCARD_MIN_PAYMENT_LOVELACE ?? '1500000');
