@@ -12,14 +12,12 @@ if (!npmCli || !existsSync(npmCli)) {
 
 const requiredEnvironment = [
   'DATABASE_URL',
-  'KEYCARD_DASHBOARD_PASSWORD',
-  'KEYCARD_SESSION_SECRET',
   'KEYCARD_ENCRYPTION_KEY',
 ];
 const missing = requiredEnvironment.filter(name => !process.env[name]);
 if (missing.length) {
   console.error(`KeyCard development configuration is incomplete. Missing: ${missing.join(', ')}`);
-  console.error('Copy .env.example to .env, add your Supabase Session pooler URL, and replace the placeholder secrets before running `npm run dev`.');
+  console.error('Copy .env.example to .env, add your Supabase Session pooler URL, and replace the encryption-key placeholder before running `npm run dev`.');
   process.exit(1);
 }
 

@@ -37,7 +37,6 @@ Requires Node.js 20.19+ and Docker Compose. Set local secrets, start PostgreSQL,
 
 ```sh
 cp .env.example .env
-openssl rand -hex 32     # use for KEYCARD_SESSION_SECRET
 openssl rand -base64 32  # use for KEYCARD_ENCRYPTION_KEY
 docker compose up -d postgres
 npm run dev
@@ -48,7 +47,9 @@ PostgreSQL connection string instead of starting the local container. KeyCard
 requires SSL for Supabase connections and applies `src/server/schema.sql` on
 backend startup.
 
-Set a private `KEYCARD_DASHBOARD_PASSWORD` in `.env` before starting. The console is served at `http://127.0.0.1:4020/provider/`; the landing page remains at Vite's printed address. The proxy supports provider-authenticated previews and payment-gated public calls. Configure payment settings before issuing quotes.
+The open registry console is served at `http://127.0.0.1:4020/provider/`; the landing page remains at Vite's printed address. Publishing does not require an account or password. Upstream API keys are still encrypted at rest, and proxy calls remain payment-gated. Configure payment settings before issuing quotes.
+
+Registry clients can use `GET /api/registry/services`, filter with `?capability=weather` or free-text `?q=forecast`, inspect one service at `GET /api/registry/services/:listingId`, and publish with `POST /api/registry/services`. Each operation includes its opaque paid proxy URL. The legacy `GET /api/discovery` and provider-console routes remain available for compatibility.
 
 See [paid-call setup, wallet commands, retry contract, and refund policy](docs/paid-calls.md). Run `npm run test:payments` for PostgreSQL integration coverage. The [agent skill](skills/keycard-agent/SKILL.md) covers wallet setup and paid-call instructions. Public calls require a stable secret `Idempotency-Key` alongside the x402 headers.
 
@@ -192,7 +193,7 @@ The proposed ad prompt injection is treated as **sponsored context**: the agent 
 
 ### Phase 2: Build provider registration and the proxy
 
-- [x] Build provider sign-in and the API registration dashboard.
+- [x] Build the open API registration dashboard and service registry.
 - [x] Add encrypted credential storage, credential rotation, and redaction from logs and responses.
 - [x] Implement operation schemas, pricing configuration, and listing enable/disable controls.
 - [x] Restrict proxy destinations and allowed operations; block access to internal network addresses.

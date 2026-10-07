@@ -16,8 +16,6 @@ test('provider listing ownership, validation, scoped operations and discovery', 
   process.env.DATABASE_URL = url.href;
   process.env.KEYCARD_PROVIDER_ID = 'provider-test';
   process.env.KEYCARD_PROVIDER_NAME = 'Listing Test Provider';
-  process.env.KEYCARD_DASHBOARD_PASSWORD = 'test-password';
-  process.env.KEYCARD_SESSION_SECRET = randomBytes(32).toString('hex');
   process.env.KEYCARD_ENCRYPTION_KEY = randomBytes(32).toString('base64');
 
   const pool = new Pool({ connectionString: url.href });
@@ -37,23 +35,17 @@ test('provider listing ownership, validation, scoped operations and discovery', 
     server = app.listen(0, '127.0.0.1');
     await new Promise(resolve => server.once('listening', resolve));
     const origin = `http://127.0.0.1:${server.address().port}`;
-    const login = await fetch(`${origin}/api/provider/session`, {
-      method: 'POST', headers: { 'content-type': 'application/json', origin },
-      body: JSON.stringify({ password: 'test-password' }),
-    });
-    assert.equal(login.status, 200);
-    const cookie = login.headers.get('set-cookie').split(';')[0];
     const payoutAddress = 'addr_test1qqul6su3r8wjg7904fdxz2r8753fju9tmpt42xecxqh86e8varjpg3ku0cuglt0rl0ckg59mx779xdffzyhrlfwmhgrsttpen0';
     const payload = listingId => ({
       listing: { listingId, name: `Listing ${listingId}`, description: 'A valid listing.', capabilities: ['search'] },
-      upstream: { baseUrl: 'https://example.com', requestTimeoutMs: 5000 },
+      upstream: { baseUrl: 'https://example.com', requestTimeoutMs: 5000, staticHeaders: { 'anthropic-version': '2023-06-01' } },
       credential: { mode: 'header', field: 'x-api-key', value: 'secret-value' },
       operations: [{ operationId: 'shared', name: 'Search', description: 'Search operation.', method: 'GET', path: '/',
         inputSchema: { type: 'object' }, outputSchema: { type: 'object' }, priceLovelace: '1500000', enabled: true }],
       payoutAddress,
     });
-    const save = body => fetch(`${origin}/api/provider/listings`, {
-      method: 'POST', headers: { 'content-type': 'application/json', origin, cookie }, body: JSON.stringify(body),
+    const save = body => fetch(`${origin}/api/registry/services`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
     });
 
     const firstSave = await save(payload('mine-one'));
@@ -61,6 +53,8 @@ test('provider listing ownership, validation, scoped operations and discovery', 
     const firstResult = await firstSave.json();
     assert.match(firstResult.proxyEndpoints[0].proxyId, /^[0-9a-f-]{36}$/);
     assert.match(firstResult.proxyEndpoints[0].proxyUrl, /\/api\/proxy\/[0-9a-f-]{36}$/);
+    const storedHeaders = (await pool.query("SELECT static_headers FROM upstream_configs WHERE listing_id='mine-one'")).rows[0].static_headers;
+    assert.deepEqual(storedHeaders, { 'anthropic-version': '2023-06-01' });
     const secondSave = await save(payload('mine-two'));
     assert.equal(secondSave.status, 201, 'operation IDs must be scoped to each listing');
     const secondResult = await secondSave.json();
@@ -94,6 +88,10 @@ test('provider listing ownership, validation, scoped operations and discovery', 
     assert.deepEqual(discovery.items.map(item => item.listingId).sort(), ['mine-one', 'mine-two']);
     assert.equal(discovery.items.every(item => item.operations[0].pricing.asset === 'lovelace'), true);
     assert.equal(discovery.items.every(item => item.operations[0].proxyUrl.endsWith(item.operations[0].proxyId)), true);
+    const registrySearch = await (await fetch(`${origin}/api/registry/services?q=updated`)).json();
+    assert.deepEqual(registrySearch.items.map(item => item.listingId), ['mine-one']);
+    const service = await (await fetch(`${origin}/api/registry/services/mine-one`)).json();
+    assert.equal(service.listingId, 'mine-one');
     const proxyPath = new URL(discovery.items[0].operations[0].proxyUrl).pathname;
     const challenge = await fetch(`${origin}${proxyPath}`, {
       headers: { 'Idempotency-Key': randomBytes(32).toString('hex') },

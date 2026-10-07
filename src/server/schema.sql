@@ -5,17 +5,6 @@ CREATE TABLE IF NOT EXISTS providers (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS provider_users (
-  user_id TEXT PRIMARY KEY,
-  provider_id TEXT NOT NULL REFERENCES providers(provider_id) ON DELETE CASCADE,
-  display_name TEXT NOT NULL,
-  password_salt TEXT NOT NULL,
-  password_hash TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE UNIQUE INDEX IF NOT EXISTS provider_users_provider_idx ON provider_users(provider_id);
-
 CREATE TABLE IF NOT EXISTS api_listings (
   listing_id TEXT PRIMARY KEY,
   provider_id TEXT NOT NULL REFERENCES providers(provider_id) ON DELETE CASCADE,
@@ -32,6 +21,7 @@ CREATE TABLE IF NOT EXISTS upstream_configs (
   listing_id TEXT PRIMARY KEY REFERENCES api_listings(listing_id) ON DELETE CASCADE,
   base_url TEXT NOT NULL,
   allowed_hosts TEXT[] NOT NULL,
+  static_headers JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(static_headers) = 'object'),
   request_timeout_ms INTEGER NOT NULL DEFAULT 5000
     CHECK (request_timeout_ms BETWEEN 250 AND 30000)
 );

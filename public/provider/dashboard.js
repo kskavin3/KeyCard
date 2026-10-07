@@ -1,8 +1,6 @@
 import { adaToLovelace, formatAda } from './money.js';
 
-const signInPanel = document.querySelector('#sign-in-panel');
 const dashboard = document.querySelector('#dashboard');
-const signOut = document.querySelector('#sign-out');
 const toast = document.querySelector('#toast');
 
 function announce(message, isError = false) {
@@ -25,11 +23,8 @@ async function api(path, options = {}) {
   return payload;
 }
 
-function showDashboard(provider) {
-  signInPanel.hidden = true;
+function showDashboard() {
   dashboard.hidden = false;
-  signOut.hidden = false;
-  document.querySelector('#welcome').textContent = `${provider.providerName} listings.`;
   loadListings();
   loadPayments();
 }
@@ -85,26 +80,6 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 }
 
-document.querySelector('#sign-in-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  try {
-    const values = new FormData(form);
-    const providerId = String(values.get('providerId') ?? '').trim();
-    await api('/api/provider/session', { method: 'POST', body: JSON.stringify({ password: values.get('password'), ...(providerId ? { providerId } : {}) }) });
-    const provider = await api('/api/provider/me');
-    form.reset();
-    showDashboard(provider);
-  } catch (error) { announce(error.message, true); }
-});
-
-signOut.addEventListener('click', async () => {
-  try { await api('/api/provider/session', { method: 'DELETE' }); } catch {}
-  dashboard.hidden = true;
-  signOut.hidden = true;
-  signInPanel.hidden = false;
-});
-
 document.querySelector('#refresh-listings').addEventListener('click', loadListings);
 
 document.querySelector('#listing-form').addEventListener('submit', async event => {
@@ -148,7 +123,7 @@ document.querySelector('#preview-form').addEventListener('submit', async event =
   } catch (error) { output.textContent = error.message; }
 });
 
-api('/api/provider/me').then(showDashboard).catch(() => {});
+showDashboard();
 
 async function loadPayments() {
   const summary=document.querySelector('#earnings-summary');

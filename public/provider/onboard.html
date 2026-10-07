@@ -22,7 +22,7 @@
         <h1>List your API on KeyCard</h1>
         <p class="muted">Upload your OpenAPI spec, configure pricing, set up a Cardano payout wallet, and go live — all in one flow.</p>
         <nav class="steps" aria-label="Onboarding steps">
-          <button class="step active" data-step="1" id="step-nav-1"><span class="step-num">1</span><span class="step-label">Upload Spec</span></button>
+          <button class="step active" data-step="1" id="step-nav-1"><span class="step-num">1</span><span class="step-label">Choose Provider</span></button>
           <div class="step-connector"></div>
           <button class="step" data-step="2" id="step-nav-2"><span class="step-num">2</span><span class="step-label">Auth &amp; Config</span></button>
           <div class="step-connector"></div>
@@ -34,12 +34,40 @@
         </nav>
       </div>
 
-      <!-- STEP 1: Upload Spec -->
+      <!-- STEP 1: Provider template or custom spec -->
       <section class="wizard-step" id="step-1">
         <div class="step-card">
           <p class="eyebrow">STEP 1 OF 5</p>
-          <h2>Upload your OpenAPI specification</h2>
-          <p class="muted">We'll automatically extract your API's name, base URL, operations, and JSON schemas so you don't have to fill them in manually.</p>
+          <h2>Choose the API you want to list</h2>
+          <p class="muted">Popular providers are preconfigured. Select one and enter only its API key, or choose Custom app to upload your own specification.</p>
+
+          <div class="provider-grid" id="provider-grid" aria-label="Preconfigured API providers">
+            <button class="provider-tile" type="button" data-provider="openai"><span class="provider-mark">O</span><strong>OpenAI</strong><span>Responses and reasoning</span></button>
+            <button class="provider-tile" type="button" data-provider="claude"><span class="provider-mark">C</span><strong>Claude</strong><span>Anthropic Messages API</span></button>
+            <button class="provider-tile" type="button" data-provider="gemini"><span class="provider-mark">G</span><strong>Gemini</strong><span>Google multimodal AI</span></button>
+            <button class="provider-tile" type="button" data-provider="elevenlabs"><span class="provider-mark">11</span><strong>ElevenLabs</strong><span>Text to speech</span></button>
+            <button class="provider-tile custom" type="button" data-provider="custom"><span class="provider-mark">+</span><strong>Custom app</strong><span>Upload an OpenAPI spec</span></button>
+          </div>
+
+          <div class="preset-key-panel panel" id="preset-key-panel" hidden>
+            <div>
+              <p class="eyebrow" id="preset-provider-label">PRECONFIGURED PROVIDER</p>
+              <h3 id="preset-provider-name">Provider API key</h3>
+              <p class="muted small" id="preset-provider-summary"></p>
+            </div>
+            <div class="form-field full">
+              <label for="preset-api-key">API key <span class="req">*</span></label>
+              <input type="password" id="preset-api-key" autocomplete="new-password" placeholder="Paste the provider API key" />
+              <p class="hint">Encrypted before storage. The base URL, authentication headers, operation, and schemas are already configured.</p>
+            </div>
+          </div>
+
+          <div id="custom-spec-flow" hidden>
+            <div class="custom-flow-heading">
+              <p class="eyebrow">CUSTOM APPLICATION</p>
+              <h3>Upload your OpenAPI specification</h3>
+              <p class="muted">We'll extract the app name, base URL, operations, and JSON schemas automatically.</p>
+            </div>
 
           <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Upload OpenAPI spec file">
             <div class="dropzone-inner">
@@ -71,6 +99,7 @@
               </div>
             </div>
             <div class="tag-row" id="parse-operations-summary"></div>
+          </div>
           </div>
 
           <div class="step-actions">
@@ -342,14 +371,6 @@
           <div class="publish-actions">
             <button class="button quiet" id="step5-back" type="button">← Back</button>
             <div class="publish-right">
-              <div class="form-field" style="min-width:210px">
-                <label for="dashboard-provider-id">Provider ID <span class="muted">(default if blank)</span></label>
-                <input type="text" id="dashboard-provider-id" autocomplete="username" />
-              </div>
-              <div class="form-field" style="min-width:260px">
-                <label for="dashboard-pw">Dashboard password <span class="req">*</span></label>
-                <input type="password" id="dashboard-pw" autocomplete="current-password" placeholder="Required to publish" required />
-              </div>
               <button class="button primary publish-btn" id="publish-btn" type="button">
                 <span id="publish-btn-text">Publish listing</span>
                 <span class="spinner hidden" id="publish-spinner"></span>
@@ -376,7 +397,7 @@
 
           <div class="success-actions">
             <a class="button" href="/provider/">Go to Provider Dashboard</a>
-            <a class="button primary" href="/api/discovery" target="_blank" rel="noopener">View in Discovery API</a>
+            <a class="button primary" href="/api/registry/services" target="_blank" rel="noopener">View in Service Registry</a>
           </div>
         </div>
       </section>

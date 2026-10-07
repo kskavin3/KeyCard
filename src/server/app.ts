@@ -7,13 +7,11 @@ import express, { type Request, type Response } from 'express';
 import type { PoolClient } from 'pg';
 import { addressCredentials } from '@x402/cardano';
 import { pool } from './db.js';
-import { clearProviderSession, createProviderSession, requireProviderSession, requireSameOrigin, verifyProviderPassword } from './auth.js';
 import { decryptCredential, encryptCredential } from './credentials.js';
 import { assertAllowedDestination, safeFetch } from './proxy-security.js';
 import { issueQuote, issueQuoteForOperation, paymentGateway } from './payments.js';
 import { createPaidHandler, PgCallStore } from './paid-calls.js';
 import { effectivePriceLovelace } from './money.js';
-import { authenticateProvider } from './accounts.js';
 import { providerPaymentsRouter } from './modules/provider-payments/router.js';
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
@@ -134,7 +132,7 @@ async function getListingOperations(listingId: string, onlyEnabled = false) {
 async function forwardUpstream(listingId: string, operationId: string, req: Request, preview = false, ownerId?: string) {
   const result = await pool.query(
     `SELECT l.listing_id, l.provider_id, l.availability,
-            u.base_url, u.allowed_hosts, u.request_timeout_ms,
+            u.base_url, u.allowed_hosts, u.request_timeout_ms, u.static_headers,
             c.auth_mode, c.auth_field, c.encrypted_secret, c.nonce, c.auth_tag,
             o.operation_id, o.method, o.path, o.input_schema, o.output_schema, o.enabled
        FROM api_listings l
@@ -157,6 +155,7 @@ async function forwardUpstream(listingId: string, operationId: string, req: Requ
   const destination = new URL(row.path, baseUrl);
   const credential = decryptCredential(row);
   const headers: Record<string, string> = { accept: 'application/json' };
+  for (const [name, value] of Object.entries(row.static_headers ?? {})) headers[name] = String(value);
   if (row.auth_mode === 'header') headers[row.auth_field] = credential;
   if (!['GET', 'DELETE'].includes(row.method)) headers['content-type'] = 'application/json';
 
@@ -231,48 +230,11 @@ app.post('/api/cardano/validate-address', (req, res) => {
     : res.status(400).json({ error: 'Provide a valid Cardano Preprod payment address.' });
 });
 
-const loginAttempts = new Map<string, { count: number; expiresAt: number }>();
-app.post('/api/provider/session', requireSameOrigin, async (req, res, next) => {
-  try {
-  const key = req.ip ?? 'unknown';
-  const now = Date.now();
-  const attempt = loginAttempts.get(key);
-  if (attempt && attempt.expiresAt > now && attempt.count >= 10) {
-    return res.status(429).json({ error: 'Too many sign-in attempts. Try again in one minute.' });
-  }
-  loginAttempts.set(key, {
-    count: attempt && attempt.expiresAt > now ? attempt.count + 1 : 1,
-    expiresAt: attempt && attempt.expiresAt > now ? attempt.expiresAt : now + 60_000,
-  });
-  const requestedProviderId = typeof req.body?.providerId === 'string' ? req.body.providerId : defaultProviderId;
-  let authenticated = await authenticateProvider(requestedProviderId, req.body?.password);
-  // Preserve isolated integration tests that import the app without server bootstrap.
-  if (!authenticated && requestedProviderId === defaultProviderId) authenticated = verifyProviderPassword(req.body?.password);
-  if (!authenticated) return res.status(401).json({ error: 'Invalid provider password.' });
-  loginAttempts.delete(key);
-  const expiresAt = createProviderSession(res, requestedProviderId);
-  return res.json({ providerId: requestedProviderId, expiresAt: new Date(expiresAt * 1000).toISOString() });
-  } catch (error) { return next(error); }
-});
-
-app.delete('/api/provider/session', requireSameOrigin, (_req, res) => {
-  clearProviderSession(res);
-  res.status(204).end();
-});
-
-app.get('/api/provider/me', requireProviderSession, async (_req, res, next) => {
-  try {
-    const result = await pool.query('SELECT name FROM providers WHERE provider_id=$1', [res.locals.providerId]);
-    if (!result.rows[0]) return res.status(401).json({ error: 'Provider account no longer exists.' });
-    return res.json({ providerId: res.locals.providerId, providerName: result.rows[0].name });
-  } catch (error) { return next(error); }
-});
-
-app.get('/api/provider/listings', requireProviderSession, async (_req, res, next) => {
+app.get('/api/provider/listings', async (_req, res, next) => {
   try {
     const listings = await pool.query(
       'SELECT l.*, u.base_url, u.allowed_hosts, u.request_timeout_ms, c.auth_mode, c.auth_field FROM api_listings l JOIN upstream_configs u USING (listing_id) JOIN api_credentials c USING (listing_id) WHERE l.provider_id = $1 ORDER BY l.created_at DESC',
-      [res.locals.providerId],
+      [defaultProviderId],
     );
     const output = await Promise.all(listings.rows.map(async row => ({
       listingId: row.listing_id,
@@ -292,10 +254,10 @@ app.get('/api/provider/listings', requireProviderSession, async (_req, res, next
   } catch (error) { next(error); }
 });
 
-app.post('/api/provider/listings', requireSameOrigin, requireProviderSession, async (req, res, next) => {
+app.post(['/api/provider/listings', '/api/registry/services'], async (req, res, next) => {
   let client: PoolClient | undefined;
   try {
-    const currentProviderId = String(res.locals.providerId);
+    const currentProviderId = defaultProviderId;
     const { listing, upstream, credential, operations } = req.body ?? {};
     if (!isRecord(listing) || !isRecord(upstream) || !isRecord(credential) || !Array.isArray(operations)) {
       throw invalid('Provide listing, upstream, credential, and operations.');
@@ -335,6 +297,18 @@ app.post('/api/provider/listings', requireSameOrigin, requireProviderSession, as
       throw invalid('This HTTP header cannot carry an upstream API key.');
     }
     if (typeof secret !== 'string' || secret.length < 4 || secret.length > 512) throw invalid('Provide a valid upstream API credential.');
+    const staticHeadersInput = upstream.staticHeaders ?? {};
+    if (!isRecord(staticHeadersInput) || Object.keys(staticHeadersInput).length > 10) throw invalid('Provide at most ten static upstream headers.');
+    const staticHeaders: Record<string, string> = {};
+    for (const [name, value] of Object.entries(staticHeadersInput)) {
+      if (!/^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(name) || typeof value !== 'string' || value.length < 1 || value.length > 256) {
+        throw invalid('Static upstream headers must use simple names and text values.');
+      }
+      if (/^(host|cookie|set-cookie|content-length|connection|transfer-encoding)$/i.test(name) || name.toLowerCase() === authField.toLowerCase()) {
+        throw invalid('A static upstream header cannot override transport or credential headers.');
+      }
+      staticHeaders[name] = value;
+    }
     const requestTimeoutMs = upstream.requestTimeoutMs ?? 5000;
     if (typeof requestTimeoutMs !== 'number' || !Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 250 || requestTimeoutMs > 30000) {
       throw invalid('Request timeout must be between 250 and 30,000 milliseconds.');
@@ -414,10 +388,10 @@ app.post('/api/provider/listings', requireSameOrigin, requireProviderSession, as
       [listingId, operationIds],
     );
     await client.query(
-      `INSERT INTO upstream_configs (listing_id, base_url, allowed_hosts, request_timeout_ms)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (listing_id) DO UPDATE SET base_url = EXCLUDED.base_url, allowed_hosts = EXCLUDED.allowed_hosts, request_timeout_ms = EXCLUDED.request_timeout_ms`,
-      [listingId, baseUrl.origin, [baseUrl.hostname], requestTimeoutMs],
+      `INSERT INTO upstream_configs (listing_id, base_url, allowed_hosts, request_timeout_ms, static_headers)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (listing_id) DO UPDATE SET base_url = EXCLUDED.base_url, allowed_hosts = EXCLUDED.allowed_hosts, request_timeout_ms = EXCLUDED.request_timeout_ms, static_headers = EXCLUDED.static_headers`,
+      [listingId, baseUrl.origin, [baseUrl.hostname], requestTimeoutMs, JSON.stringify(staticHeaders)],
     );
     await client.query(
       `INSERT INTO api_credentials (listing_id, auth_mode, auth_field, encrypted_secret, nonce, auth_tag, key_version)
@@ -455,7 +429,7 @@ app.post('/api/provider/listings', requireSameOrigin, requireProviderSession, as
   }
 });
 
-app.put('/api/provider/listings/:listingId/credential', requireSameOrigin, requireProviderSession, async (req, res, next) => {
+app.put(['/api/provider/listings/:listingId/credential', '/api/registry/services/:listingId/credential'], async (req, res, next) => {
   try {
     const { mode, field, value } = req.body ?? {};
     if (!['header', 'query'].includes(mode) || typeof field !== 'string' || !/^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(field) || typeof value !== 'string' || value.length < 4 || value.length > 512) {
@@ -464,7 +438,7 @@ app.put('/api/provider/listings/:listingId/credential', requireSameOrigin, requi
     if (mode === 'header' && /^(host|cookie|content-length|connection|transfer-encoding)$/i.test(field)) {
       throw invalid('This HTTP header cannot carry an upstream API key.');
     }
-    const listing = await pool.query('SELECT listing_id FROM api_listings WHERE listing_id = $1 AND provider_id = $2', [req.params.listingId, res.locals.providerId]);
+    const listing = await pool.query('SELECT listing_id FROM api_listings WHERE listing_id = $1 AND provider_id = $2', [req.params.listingId, defaultProviderId]);
     if (listing.rowCount !== 1) return res.status(404).json({ error: 'Listing not found.' });
     const encrypted = encryptCredential(value);
     await pool.query(
@@ -475,22 +449,23 @@ app.put('/api/provider/listings/:listingId/credential', requireSameOrigin, requi
   } catch (error) { return next(error); }
 });
 
-app.patch('/api/provider/listings/:listingId/availability', requireSameOrigin, requireProviderSession, async (req, res, next) => {
+app.patch(['/api/provider/listings/:listingId/availability', '/api/registry/services/:listingId/availability'], async (req, res, next) => {
   try {
     const { availability } = req.body ?? {};
     if (!['available', 'temporarily-unavailable', 'disabled'].includes(availability)) throw invalid('Choose a valid listing availability state.');
     const updated = await pool.query(
       'UPDATE api_listings SET availability = $3, updated_at = now() WHERE listing_id = $1 AND provider_id = $2 RETURNING listing_id',
-      [req.params.listingId, res.locals.providerId, availability],
+      [req.params.listingId, defaultProviderId, availability],
     );
     if (updated.rowCount !== 1) return res.status(404).json({ error: 'Listing not found.' });
     return res.json({ listingId: req.params.listingId, availability });
   } catch (error) { return next(error); }
 });
 
-app.get('/api/discovery', async (req, res, next) => {
+app.get(['/api/discovery', '/api/registry/services'], async (req, res, next) => {
   try {
     const terms = typeof req.query.capability === 'string' ? req.query.capability.toLowerCase() : undefined;
+    const search = typeof req.query.q === 'string' && req.query.q.trim() ? `%${req.query.q.trim()}%` : undefined;
     const listingsResult = await pool.query(
       `SELECT * FROM api_listings
        WHERE availability = 'available'
@@ -498,8 +473,11 @@ app.get('/api/discovery', async (req, res, next) => {
          AND ($1::text IS NULL OR EXISTS (
            SELECT 1 FROM jsonb_array_elements_text(capabilities) c(value) WHERE lower(c.value) = $1
          ))
+         AND ($2::text IS NULL OR name ILIKE $2 OR description ILIKE $2 OR EXISTS (
+           SELECT 1 FROM jsonb_array_elements_text(capabilities) c(value) WHERE c.value ILIKE $2
+         ))
        ORDER BY updated_at DESC`,
-      [terms ?? null],
+      [terms ?? null, search ?? null],
     );
     const items = [];
     for (const row of listingsResult.rows) {
@@ -513,12 +491,12 @@ app.get('/api/discovery', async (req, res, next) => {
 
 async function providerPreview(req: Request, res: Response, next: (error?: unknown) => void) {
   try {
-    const payload = await forwardUpstream(String(req.params.listingId), String(req.params.operationId), req, true, String(res.locals.providerId));
+    const payload = await forwardUpstream(String(req.params.listingId), String(req.params.operationId), req, true, defaultProviderId);
     res.json({ preview: true, result: payload, requestHash: `sha256:${createHash('sha256').update(JSON.stringify(req.body ?? req.query)).digest('hex')}` });
   } catch (error) { next(error); }
 }
 
-app.all('/api/provider/preview/:listingId/:operationId', requireSameOrigin, requireProviderSession, providerPreview);
+app.all('/api/provider/preview/:listingId/:operationId', providerPreview);
 
 const callStore = new PgCallStore(pool);
 app.all('/api/proxy/:listingId/:operationId', createPaidHandler({
@@ -549,6 +527,21 @@ app.all('/api/proxy/:proxyId', async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+});
+
+app.get('/api/registry/services/:listingId', async (req, res, next) => {
+  try {
+    const listingResult = await pool.query(
+      `SELECT * FROM api_listings
+       WHERE listing_id = $1 AND availability = 'available'
+         AND EXISTS (SELECT 1 FROM api_operations o WHERE o.listing_id = api_listings.listing_id AND o.enabled = TRUE)`,
+      [req.params.listingId],
+    );
+    const listing = listingResult.rows[0];
+    if (!listing) return res.status(404).json({ error: 'Service not found.' });
+    const operations = (await getListingOperations(listing.listing_id, true)).map(safePublicOperation);
+    return res.json({ ...safePublicListing(listing, operations), operations });
+  } catch (error) { return next(error); }
 });
 
 app.use('/api/provider', providerPaymentsRouter);

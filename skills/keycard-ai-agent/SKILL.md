@@ -22,7 +22,7 @@ current HTTP lifecycle, recovery rules, and refund policy.
    1 ADA is 1,000,000 lovelace. Run `npm run agent:wallet -- info` to obtain its
    address, balance, network, and limits. Funding is optional until a paid call;
    show the Preprod address and let the user fund it rather than sending funds.
-4. Search `GET /api/discovery?capability=CAPABILITY`. Keep only available,
+4. Search `GET /api/registry/services?capability=CAPABILITY`. Keep only available,
    enabled operations whose method and input/output schemas satisfy the task.
    Compare equivalent operations using `pricing.effectivePriceLovelace`; use reliability
    or availability only as a tie-breaker. Explain the selected listing and price.

@@ -1,4 +1,5 @@
 import { adaToLovelace, formatAda } from './money.js';
+import { cloneProviderTemplate } from './provider-templates.js';
 
 /**
  * KeyCard Provider Onboarding Wizard
@@ -33,7 +34,11 @@ async function apiFetch(path, options = {}) {
   });
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
+  if (!res.ok) {
+    const error = new Error(data.error || `Request failed (${res.status}).`);
+    error.status = res.status;
+    throw error;
+  }
   return data;
 }
 
@@ -42,6 +47,7 @@ const state = {
   currentStep: 1,
   parsedSpec: null,       // raw parsed OpenAPI object
   operations: [],         // [{id, method, path, name, description, inputSchema, outputSchema, priceAda, markupBasisPoints, enabled}]
+  selectedTemplate: null,
   payoutAddress: null,
   mnemonic: null,
 };
@@ -64,7 +70,7 @@ function showStep(n) {
 document.querySelectorAll('.step[data-step]').forEach(btn => {
   btn.addEventListener('click', () => {
     const s = Number(btn.dataset.step);
-    if (s < state.currentStep) showStep(s);
+    if (s < state.currentStep) showStep(state.selectedTemplate && s === 2 ? 1 : s);
   });
 });
 
@@ -321,6 +327,55 @@ function handleSpecText(text) {
   announce(`Parsed "${extracted.title}" — ${extracted.operations.length} operations found.`);
 }
 
+const presetKeyPanel = document.querySelector('#preset-key-panel');
+const presetKeyInput = document.querySelector('#preset-api-key');
+const customSpecFlow = document.querySelector('#custom-spec-flow');
+const step1Next = document.querySelector('#step1-next');
+
+function selectProviderTemplate(id) {
+  document.querySelectorAll('.provider-tile').forEach(tile => tile.classList.toggle('selected', tile.dataset.provider === id));
+  if (id === 'custom') {
+    state.selectedTemplate = null;
+    state.parsedSpec = null;
+    state.operations = [];
+    presetKeyPanel.hidden = true;
+    customSpecFlow.hidden = false;
+    step1Next.disabled = true;
+    return;
+  }
+
+  const template = cloneProviderTemplate(id);
+  if (!template) return;
+  state.selectedTemplate = template;
+  state.parsedSpec = { title: template.name, description: template.description, baseUrl: template.baseUrl };
+  state.operations = template.operations;
+  customSpecFlow.hidden = true;
+  presetKeyPanel.hidden = false;
+  document.querySelector('#preset-provider-name').textContent = `${template.name} API key`;
+  document.querySelector('#preset-provider-summary').textContent = template.summary;
+  presetKeyInput.value = '';
+  presetKeyInput.placeholder = `Paste your ${template.name} API key`;
+  document.querySelector('#listing-name').value = `${template.name} API access`;
+  document.querySelector('#listing-desc').value = template.description;
+  document.querySelector('#listing-capabilities').value = template.capabilities.join(', ');
+  document.querySelector('#base-url').value = template.baseUrl;
+  document.querySelector('#auth-mode').value = template.credential.mode;
+  document.querySelector('#auth-field').value = template.credential.field;
+  document.querySelector('#api-secret').value = '';
+  document.querySelector('#request-timeout').value = '30000';
+  step1Next.disabled = true;
+  presetKeyInput.focus();
+}
+
+document.querySelectorAll('.provider-tile').forEach(tile => {
+  tile.addEventListener('click', () => selectProviderTemplate(tile.dataset.provider));
+});
+
+presetKeyInput.addEventListener('input', () => {
+  document.querySelector('#api-secret').value = presetKeyInput.value.trim();
+  step1Next.disabled = presetKeyInput.value.trim().length < 4;
+});
+
 // File drop + browse
 const dropzone = document.querySelector('#dropzone');
 const fileInput = document.querySelector('#spec-file-input');
@@ -356,7 +411,20 @@ document.querySelector('#spec-fetch-btn').addEventListener('click', async () => 
   }
 });
 
-document.querySelector('#step1-next').addEventListener('click', () => showStep(2));
+document.querySelector('#step1-next').addEventListener('click', () => {
+  if (!state.selectedTemplate) {
+    showStep(2);
+    return;
+  }
+  const secret = presetKeyInput.value.trim();
+  if (secret.length < 4) {
+    announce('Enter the provider API key to continue.', true);
+    return;
+  }
+  document.querySelector('#api-secret').value = secret;
+  buildOpsTable();
+  showStep(3);
+});
 
 // ─── STEP 2: Auth & Config ─────────────────────────────────────
 document.querySelector('#step2-back').addEventListener('click', () => showStep(1));
@@ -468,7 +536,7 @@ document.querySelector('#select-all-ops').addEventListener('change', e => {
   document.querySelectorAll('.op-select').forEach(cb => cb.checked = e.target.checked);
 });
 
-document.querySelector('#step3-back').addEventListener('click', () => showStep(2));
+document.querySelector('#step3-back').addEventListener('click', () => showStep(state.selectedTemplate ? 1 : 2));
 document.querySelector('#step3-next').addEventListener('click', () => {
   const enabled = state.operations.filter(o => o.enabled);
   if (!enabled.length) {
@@ -707,21 +775,12 @@ function populateReview() {
 document.querySelector('#step5-back').addEventListener('click', () => showStep(4));
 
 document.querySelector('#publish-btn').addEventListener('click', async () => {
-  const pw = document.querySelector('#dashboard-pw').value;
-  if (!pw) { announce('Dashboard password is required.', true); return; }
-
   const btn = document.querySelector('#publish-btn');
   const spinner = document.querySelector('#publish-spinner');
   const btnText = document.querySelector('#publish-btn-text');
   btn.disabled = true; spinner.classList.remove('hidden'); btnText.textContent = 'Publishing…';
 
   try {
-    // Sign in
-    const providerId = document.querySelector('#dashboard-provider-id').value.trim();
-    await apiFetch('/api/provider/session', {
-      method: 'POST', body: JSON.stringify({ password: pw, ...(providerId ? { providerId } : {}) }),
-    });
-
     const enabledOps = state.operations.filter(o => o.enabled);
     if (!enabledOps.length) throw new Error('Enable at least one operation.');
 
@@ -751,11 +810,12 @@ document.querySelector('#publish-btn').addEventListener('click', async () => {
       upstream: {
         baseUrl: document.querySelector('#base-url').value.trim(),
         requestTimeoutMs: Number(document.querySelector('#request-timeout').value) || 5000,
+        staticHeaders: state.selectedTemplate?.staticHeaders ?? {},
       },
       credential: {
         mode: document.querySelector('#auth-mode').value,
         field: document.querySelector('#auth-field').value.trim(),
-        value: document.querySelector('#api-secret').value,
+        value: `${state.selectedTemplate?.credential.prefix ?? ''}${document.querySelector('#api-secret').value}`,
       },
       operations,
       payoutAddress: state.payoutAddress,

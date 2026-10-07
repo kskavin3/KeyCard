@@ -21,7 +21,7 @@ Use this skill from a KeyCard checkout with dependencies installed. Read
    pay. Provide the receiving Preprod address; obtain test ADA using the Cardano
    testnet faucet or a test wallet. Do not send funds automatically. Sponsorship
    is a concept demo, so do not promise free sponsored access to the real proxy.
-4. Search `/api/discovery?capability=...`. Inspect operation method and input and
+4. Search `/api/registry/services?capability=...`. Inspect operation method and input and
    output schemas; exclude unavailable or unsuitable providers. Compare service
    prices using `pricing.effectivePriceLovelace` across suitable listings. The
    final ADA quote includes the minimum output floor; include the actual transaction fee when assessing total cost.

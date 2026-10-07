@@ -14,25 +14,13 @@
         <a class="brand" href="/">KEYCARD<span> / PROVIDER</span></a>
         <div style="display:flex;gap:10px;align-items:center">
           <a href="/provider/onboard.html" class="button" style="font-size:12px" id="onboard-link">+ Onboard new API</a>
-          <button id="sign-out" class="button quiet" hidden>Sign out</button>
         </div>
       </header>
 
-      <section id="sign-in-panel" class="panel narrow">
-        <p class="eyebrow">PROVIDER CONSOLE</p>
-        <h1>Manage your API listings.</h1>
-        <p class="muted">Sign in to register an upstream API, configure its paid operations, and check the proxy.</p>
-        <form id="sign-in-form" class="stack">
-          <label>Provider ID <span class="muted">(leave blank for default)</span><input name="providerId" autocomplete="username" /></label>
-          <label>Dashboard password<input name="password" type="password" autocomplete="current-password" required /></label>
-          <button class="button primary" type="submit">Sign in</button>
-        </form>
-      </section>
-
-      <section id="dashboard" hidden>
+      <section id="dashboard">
         <div class="intro">
           <p class="eyebrow">PROVIDER CONSOLE</p>
-          <h1 id="welcome">Your API listings.</h1>
+          <h1 id="welcome">Open API service registry.</h1>
           <p class="muted">Credentials are encrypted at rest and only attached to server-side upstream requests.</p>
         </div>
 

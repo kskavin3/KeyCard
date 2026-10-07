@@ -172,6 +172,23 @@ input:focus, textarea:focus, select:focus {
 .btn-eye:hover { color: var(--text); }
 
 /* ─── DROPZONE ──────────────────────────────────────────────── */
+.provider-grid {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 24px;
+}
+.provider-tile {
+  min-height: 132px; padding: 18px 14px; border: 1px solid var(--border); border-radius: var(--card-radius);
+  background: var(--surface2); color: var(--text); cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; transition: border-color var(--transition), transform var(--transition), background var(--transition);
+}
+.provider-tile:hover, .provider-tile.selected { border-color: var(--accent); background: #10180c; transform: translateY(-2px); }
+.provider-tile span:last-child { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.provider-mark {
+  display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--border2); border-radius: 9px;
+  color: var(--accent); font: 600 13px var(--mono);
+}
+.preset-key-panel { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.2fr); gap: 24px; align-items: end; margin-top: 20px; }
+.preset-key-panel h3, .custom-flow-heading h3 { margin: 4px 0 7px; }
+.custom-flow-heading { margin-top: 28px; }
 .dropzone {
   border: 2px dashed var(--border2); border-radius: var(--card-radius);
   background: linear-gradient(135deg, var(--surface2) 0%, #0a0e15 100%);
@@ -503,11 +520,14 @@ code { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--accent);
 
 /* ─── RESPONSIVE ────────────────────────────────────────────── */
 @media (max-width: 900px) {
+  .provider-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .preset-key-panel { grid-template-columns: 1fr; }
   .review-grid { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .form-field.third, .form-field.half { grid-column: 1 / -1; }
 }
 @media (max-width: 700px) {
+  .provider-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .steps { gap: 2px; }
   .step-label { display: none; }
   .step-connector { min-width: 12px; }

@@ -5,14 +5,13 @@ import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
 
 const database=process.env.KEYCARD_TEST_DATABASE_URL;
-test('provider HTTP accounting, access control, reconciliation and confirmed refund recording',{
+test('open registry accounting, reconciliation and confirmed refund recording',{
   skip:!database && 'Set KEYCARD_TEST_DATABASE_URL for provider integration tests.',
 },async()=>{
   const schema=`keycard_provider_test_${randomBytes(8).toString('hex')}`;
   const admin=new Pool({connectionString:database});await admin.query(`CREATE SCHEMA ${schema}`);
   const url=new URL(database);url.searchParams.set('options',`-c search_path=${schema}`);
   process.env.DATABASE_URL=url.href;process.env.KEYCARD_PROVIDER_ID='provider-test';
-  process.env.KEYCARD_SESSION_SECRET=randomBytes(32).toString('hex');process.env.KEYCARD_DASHBOARD_PASSWORD='test-password';
   process.env.BLOCKFROST_PROJECT_ID='fixture';
   const actualFetch=globalThis.fetch;
   const refundHash='9'.repeat(64),paymentHash='2'.repeat(64);
@@ -41,10 +40,7 @@ test('provider HTTP accounting, access control, reconciliation and confirmed ref
     }
     const {app}=await import('./server/app.ts');server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
     const origin=`http://127.0.0.1:${server.address().port}`;
-    assert.equal((await actualFetch(origin+'/api/provider/earnings')).status,401);
-    const login=await actualFetch(origin+'/api/provider/session',{method:'POST',headers:{'content-type':'application/json',origin},body:JSON.stringify({password:'test-password'})});
-    assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];
-    const request=(path,body,extra={})=>actualFetch(origin+path,{method:body?'POST':'GET',headers:{cookie,...(body?{'content-type':'application/json',origin}:{}),...extra},...(body?{body:JSON.stringify(body)}:{})});
+    const request=(path,body,extra={})=>actualFetch(origin+path,{method:body?'POST':'GET',headers:{...(body?{'content-type':'application/json'}:{}),...extra},...(body?{body:JSON.stringify(body)}:{})});
     const summary=await (await request('/api/provider/earnings')).json();
     assert.equal(summary.received_lovelace,'3000000');assert.equal(summary.earned_lovelace,'1500000');
     assert.equal(summary.refund_due_lovelace,'1500000');assert.equal(summary.pending_calls,1);
@@ -52,7 +48,6 @@ test('provider HTTP accounting, access control, reconciliation and confirmed ref
     assert.equal(payments.items.some(item=>item.receiptId==='other'),false);
     assert.equal(JSON.stringify(payments).includes('payment_payload'),false);
     assert.equal((await request('/api/provider/payments/other/reconcile',{})).status,404);
-    assert.equal((await request('/api/provider/payments/failure/refund',{transaction:refundHash},{origin:'https://foreign.example'})).status,403);
     refundAmount='1499999';assert.equal((await request('/api/provider/payments/failure/refund',{transaction:refundHash})).status,400);
     refundAmount='1500000';const recorded=await request('/api/provider/payments/failure/refund',{transaction:refundHash});
     assert.equal(recorded.status,200);assert.equal((await recorded.json()).refundStatus,'paid');
