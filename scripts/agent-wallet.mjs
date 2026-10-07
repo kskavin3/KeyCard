@@ -38,7 +38,7 @@ try {
         }
       }
       console.log(JSON.stringify({network:'cardano:preprod',address,balanceLovelace,limits:JSON.parse(await readFile(policyPath,'utf8')),
-        funding:'Optional: send Preprod test ADA to this address. Paid calls need service amount plus fees; sponsorship is not implemented.'},null,2));
+        funding:'Send enough Preprod test ADA to this address for the service amount and network fee before a paid call.'},null,2));
     } else if(command==='call') {
       const [url,requestId,method='GET',bodyText]=args;
       if(!projectId) throw Error('BLOCKFROST_PROJECT_ID is required to build payments.');

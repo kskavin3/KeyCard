@@ -10,9 +10,8 @@ plan; it is not a production payment recommendation.
   `@x402/express`, `@x402/core`, and `@x402/cardano` packages, pinned together
   at 2.26.0 for the initial integration because that is the compatibility
   target documented by the Cardano Foundation facilitator.
-- Use PostgreSQL for listings, quotes, payment receipts, idempotency, and
-  sponsor budget reservations. Those records need uniqueness and atomic
-  updates as payment retries and sponsor redemptions are added.
+- Use PostgreSQL for listings, quotes, payment receipts, and idempotency. Those
+  records need uniqueness and atomic updates across payment retries.
 - Use Docker Compose for the local application, database, and optional local
   facilitator. Choose a production hosting provider after the test-network
   flow works; this does not block local development.
@@ -65,7 +64,7 @@ plan; it is not a production payment recommendation.
 ## Initial data contracts
 
 The JSON Schema Draft 2020-12 files in `schemas/` define public API listings,
-operations, quotes, payments, sponsorship offers, and adVault entries. Public
+operations, quotes, payments, receipts, and local-vault entries. Public
 listing and discovery responses must never include upstream API credentials.
 The x402 SDK owns protocol-level header and facilitator schemas; KeyCard's
 schemas describe its application records and reference x402 v2 fields where

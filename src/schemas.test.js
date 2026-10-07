@@ -10,7 +10,6 @@ const schemaNames = [
   'quote',
   'payment',
   'receipt',
-  'sponsorship-offer',
   'advault-entry',
 ];
 const ajv = new Ajv2020({ allErrors: true, strict: false });

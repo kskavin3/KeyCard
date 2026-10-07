@@ -8,7 +8,7 @@ import { jcs } from '@x402/cardano';
 type State = 'quoted' | 'verified' | 'executing' | 'result_ready' | 'settling' | 'completed' | 'failed' | 'review';
 export type PaidCall = {
   call_id: string; request_hash: string; provider_id: string; listing_id: string; operation_id: string;
-  authorization_method: 'payment' | 'sponsorship';
+  authorization_method: 'payment';
   requirements: PaymentRequirements; expires_at: Date; created_at: Date; state: State;
   tx_hash?: string; payment_payload?: PaymentPayload; payer?: string;
   response_status?: number; response_body?: any; settlement?: SettleResponse;

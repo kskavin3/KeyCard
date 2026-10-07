@@ -114,9 +114,7 @@ function updatePreview() {
   document.querySelector('#demo-provider').textContent = preview.provider.name;
   document.querySelector('#demo-match').textContent = `Cheapest of ${preview.matchCount} matching services`;
   document.querySelector('#demo-price').textContent = `₳ ${preview.agentCost.toFixed(2)}`;
-  document.querySelector('#demo-payer').textContent = mode === 'sponsored'
-    ? `Sponsor covers ₳ ${preview.provider.price.toFixed(2)}`
-    : 'Example total / call';
+  document.querySelector('#demo-payer').textContent = 'Example total / call';
   modeButtons.forEach(button => {
     const active = button.dataset.mode === mode;
     button.classList.toggle('active', active);
@@ -136,12 +134,6 @@ modeButtons.forEach(button => button.addEventListener('click', () => {
   updatePreview();
 }));
 apiSelect.addEventListener('change', updatePreview);
-document.querySelectorAll('[data-demo-link]').forEach(link => link.addEventListener('click', () => {
-  if (running) return;
-  mode = link.dataset.demoLink;
-  updatePreview();
-}));
-
 runButton.addEventListener('click', async () => {
   if (running) return;
   running = true;
@@ -168,7 +160,7 @@ runButton.addEventListener('click', async () => {
       demoLog.append(line);
     }
     document.querySelector('#response-body').textContent = JSON.stringify(preview.response, null, 2);
-    document.querySelector('#demo-receipt').textContent = mode === 'sponsored' ? 'Sponsor-funded · demo' : 'Agent-funded · demo';
+    document.querySelector('#demo-receipt').textContent = 'Agent-funded · demo';
     demoResponse.hidden = false;
   } finally {
     running = false;

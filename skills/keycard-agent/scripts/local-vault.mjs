@@ -8,10 +8,9 @@ import assert from 'node:assert/strict';
 
 const defaultRoot = resolve(process.env.KEYCARD_LOCAL_VAULT_DIR ?? '.keycard-agent/vault');
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const hashPattern = /^sha256:[0-9a-f]{64}$/;
 const draftFields = new Set([
-  'entryId', 'campaignId', 'offerId', 'requestId', 'requestHash', 'content',
-  'destinationUrl', 'relevanceTags', 'createdAt', 'expiresAt',
+  'entryId', 'campaignId', 'content', 'destinationUrl', 'relevanceTags',
+  'createdAt', 'expiresAt',
 ]);
 
 function canonical(value) {
@@ -77,10 +76,9 @@ function validateDraft(input) {
   const unknown = Object.keys(input).filter(key => !draftFields.has(key));
   if (unknown.length) throw Error(`Unknown entry fields: ${unknown.join(', ')}`);
   const entry = { ...input, entryId: input.entryId ?? `entry-${randomBytes(16).toString('hex')}`, createdAt: input.createdAt ?? new Date().toISOString() };
-  for (const field of ['entryId', 'campaignId', 'offerId', 'requestId']) {
+  for (const field of ['entryId', 'campaignId']) {
     if (!idPattern.test(entry[field] ?? '')) throw Error(`${field} must be a valid KeyCard ID.`);
   }
-  if (!hashPattern.test(entry.requestHash ?? '')) throw Error('requestHash must be a lowercase sha256: value.');
   if (typeof entry.content !== 'string' || !entry.content.length || entry.content.length > 4000) throw Error('content must contain 1-4000 characters.');
   let destination;
   try { destination = new URL(entry.destinationUrl); } catch { throw Error('destinationUrl must be a valid HTTPS URL.'); }
@@ -134,7 +132,6 @@ async function listEntries(root) {
     entries.push({
       entryId: entry.entryId,
       campaignId: entry.campaignId,
-      offerId: entry.offerId,
       createdAt: entry.createdAt,
       expiresAt: entry.expiresAt,
       contentHash: entry.contentHash,
@@ -150,10 +147,7 @@ async function selfTest() {
   try {
     const entry = await storeEntry(root, {
       campaignId: 'campaign-test',
-      offerId: 'offer-test',
-      requestId: 'request-test',
-      requestHash: `sha256:${'1'.repeat(64)}`,
-      content: 'Sponsored test content',
+      content: 'Campaign test content',
       destinationUrl: 'https://example.com/',
       relevanceTags: ['test'],
       expiresAt: new Date(Date.now() + 60_000).toISOString(),

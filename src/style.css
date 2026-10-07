@@ -139,7 +139,7 @@ h1 { font-size: clamp(66px, 6.8vw, 99px); line-height: 1.06; font-weight: 500; l
 .section-heading .eyebrow { margin-bottom: 22px; color: #bcc3b6; }
 h2 { font-size: clamp(38px, 4vw, 56px); line-height: 1.16; letter-spacing: -.055em; }
 .section-heading > p { color: var(--muted); font-size: 14px; line-height: 1.8; padding-bottom: 4px; }
-.audience-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.audience-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .audience-card { background: #111411; border: 1px solid #ffffff0e; border-radius: 8px; padding: 27px; transition: border-color .3s, background .3s; }
 .audience-card:hover { border-color: #c2f87846; background: #141914; }
 .audience-top { display: flex; align-items: center; justify-content: space-between; color: #a2ad98; }
@@ -165,12 +165,6 @@ h2 { font-size: clamp(38px, 4vw, 56px); line-height: 1.16; letter-spacing: -.055
 .price-row.best { border-color: #c2f87849; background: #c2f87808; color: #c2f878; }
 .price-row.best i { background: var(--lime); }
 .price-row .icon { width: 10px; height: 10px; }
-.sponsor-visual { display: grid; place-items: center; overflow: hidden; }
-.sponsor-orbit { position: absolute; width: 190px; height: 190px; border: 1px solid #b9d09d19; border-radius: 50%; top: -15px; }
-.sponsor-orbit.inner { width: 135px; height: 135px; top: 12px; }
-.sponsor-heart { width: 55px; height: 55px; border-radius: 50%; display: grid; place-items: center; color: var(--lime); background: #25351b; border: 1px solid #c2f8783d; transform: translateY(-5px); }
-.sponsor-heart .icon { width: 27px; height: 27px; }
-.sponsor-badge { position: absolute; bottom: 15px; padding: 7px 10px; background: #171f12; border: 1px solid #9abb721f; border-radius: 3px; color: #a8bc98; font-family: var(--mono); font-size: 5px; letter-spacing: 1px; }
 .section-note { font-family: var(--mono); font-size: 8px; letter-spacing: .15px; color: #7c8475; margin-top: 17px; line-height: 1.7; }
 
 .how-section { padding-block: 100px 0; border-block: 1px solid var(--line); background: #0e110e; }
@@ -232,37 +226,6 @@ h2 { font-size: clamp(38px, 4vw, 56px); line-height: 1.16; letter-spacing: -.055
 .success-response > span { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: var(--lime); background: #c2f8780d; border: 1px solid #c2f8782d; margin: auto auto 10px; }
 .success-response > strong { color: var(--lime); font-family: var(--mono); font-size: 19px; font-weight: 400; }
 .success-response > p { color: #92a084; font-size: 10px; line-height: 1.6; margin-top: 8px; }
-
-.sponsorship-panel { background: #c2f878; color: #1b2812; border-radius: 9px; display: grid; grid-template-columns: 1fr .9fr; position: relative; overflow: hidden; padding: 62px 62px 0; }
-.sponsorship-copy { position: relative; z-index: 2; padding-bottom: 44px; }
-.sponsorship-copy .eyebrow { color: #3d5728; font-size: 8px; }
-.sponsorship-copy .tiny-square { background: #364e22; }
-.sponsorship-copy h2 { font-size: 57px; line-height: 1.1; margin-top: 20px; color: #17230f; }
-.sponsorship-copy > p { font-size: 14px; color: #486331; line-height: 1.85; max-width: 350px; margin-block: 20px 24px; }
-.sponsor-fine-print { display: block; font-size: 8px; margin-top: 17px; color: #59723f; }
-.sponsorship-art { position: relative; min-height: 350px; }
-.sponsor-ring { position: absolute; width: 380px; height: 380px; border-radius: 50%; border: 1px solid #476e3326; left: calc(50% - 190px); top: -13px; }
-.ring-two { width: 480px; height: 480px; left: calc(50% - 240px); top: -63px; }
-.ring-three { width: 580px; height: 580px; left: calc(50% - 290px); top: -113px; }
-.sponsor-art-plus { position: absolute; right: 0; top: 22px; color: #567a37; font-size: 22px; font-family: var(--mono); }
-.zero-balance { position: absolute; left: 50%; top: 34px; transform: translateX(-50%); text-align: center; white-space: nowrap; }
-.zero-balance > span:first-child { font-family: var(--mono); font-size: 8px; letter-spacing: 2px; color: #56763a; }
-.zero-balance > strong { display: block; font-family: var(--heading); font-weight: 400; font-size: 128px; letter-spacing: -10px; line-height: 1.25; }
-.zero-balance > strong > span { font-size: 74px; font-weight: 400; vertical-align: 10px; margin-left: 6px; }
-.zero-badge { display: inline-flex; align-items: center; gap: 6px; color: #3b5627; padding: 6px 9px; border: 1px solid #456b2d43; border-radius: 20px; font-family: var(--mono); font-size: 6px; letter-spacing: .7px; }
-.zero-badge .icon { width: 10px; height: 10px; }
-.ad-vault-card { position: absolute; width: 260px; bottom: 21px; left: calc(50% - 105px); padding: 18px; color: #d2e6c0; background: #1b2b12; border: 1px solid #ffffff29; border-radius: 7px; transform: rotate(-7deg); box-shadow: 0 15px 40px #2c491a30; }
-.ad-vault-card > div:first-child { display: flex; align-items: center; gap: 7px; }
-.vault-icon { width: 24px; height: 24px; background: #c2f87810; color: #c2f878; border-radius: 5px; display: grid; place-items: center; }
-.vault-icon .icon { width: 12px; height: 12px; }
-.ad-vault-card strong { font-size: 12px; font-weight: 500; }
-.vault-status { font-family: var(--mono); font-size: 5px; letter-spacing: 1px; color: #c2f878; margin-left: auto; padding: 5px; background: #c2f8780d; border: 1px solid #c2f8781a; border-radius: 2px; }
-.vault-hash { display: block; font-family: var(--mono); font-size: 7px; color: #7a9b63; padding-block: 14px; }
-.vault-bottom { display: flex; justify-content: space-between; border-top: 1px solid #c2f87817; padding-top: 11px; font-size: 7px; color: #a4c589; }
-.vault-bottom .icon { width: 11px; height: 11px; color: var(--lime); }
-.sponsorship-steps { position: relative; z-index: 2; grid-column: 1 / -1; border-top: 1px solid #57793834; display: flex; align-items: center; justify-content: space-between; padding-block: 25px; font-size: 9px; color: #48632f; }
-.sponsorship-steps b { font-family: var(--mono); font-size: 7px; font-weight: 400; color: #718e56; margin-right: 9px; }
-.sponsorship-steps i { font-style: normal; color: #739552; }
 
 .playground-section { display: grid; grid-template-columns: .85fr 1fr; gap: 110px; padding-top: 20px; align-items: center; }
 .playground-intro .eyebrow { margin-bottom: 24px; }
@@ -365,8 +328,6 @@ h2 { font-size: clamp(38px, 4vw, 56px); line-height: 1.16; letter-spacing: -.055
   .audience-card h3 { font-size: 18px; }
   .strip-label { padding-right: 24px; }
   .capability-inner > span:not(.strip-label) { font-size: 10px; }
-  .sponsorship-panel { padding: 50px 42px 0; }
-  .sponsorship-copy h2 { font-size: 48px; }
   .playground-section { gap: 65px; }
   .faq-section { gap: 60px; }
   .flow-scenes { margin-inline: 20px; }
@@ -414,10 +375,6 @@ h2 { font-size: clamp(38px, 4vw, 56px); line-height: 1.16; letter-spacing: -.055
   .flow-scenes { margin-inline: 15px; }
   .terminal-footer { font-size: 6px; }
   .flow-caption { font-size: 7px; gap: 5px; }
-  .sponsorship-panel { padding: 40px 30px 0; grid-template-columns: 1fr 1fr; }
-  .sponsorship-copy h2 { font-size: 44px; }
-  .sponsorship-copy > p { font-size: 11px; }
-  .sponsorship-art { transform: scale(.86); transform-origin: center; }
   .playground-section { gap: 36px; padding-top: 15px; }
   .playground-intro h2 { font-size: 41px; }
   .preview-note { font-size: 5px; letter-spacing: .5px; }
@@ -505,22 +462,6 @@ h2 { font-size: clamp(38px, 4vw, 56px); line-height: 1.16; letter-spacing: -.055
   .story-step h3 { font-size: 29px; }
   .story-step p { font-size: 12px; max-width: 100%; }
   .story-step .eyebrow { margin-bottom: 10px; }
-  .sponsorship-panel { display: block; padding: 32px 26px 0; }
-  .sponsorship-copy { padding-bottom: 0; }
-  .sponsorship-copy h2 { font-size: 48px; }
-  .sponsorship-copy > p { font-size: 12px; max-width: 100%; }
-  .sponsorship-copy .button { min-height: 47px; font-size: 12px; }
-  .sponsor-fine-print { font-size: 7px; }
-  .sponsorship-art { min-height: 315px; margin-top: 12px; transform: scale(.9); transform-origin: center; }
-  .zero-balance { top: 20px; }
-  .zero-balance > strong { font-size: 110px; }
-  .zero-balance > strong > span { font-size: 65px; }
-  .sponsor-ring { top: -10px; }.ring-two { top: -60px; }.ring-three { top: -110px; }
-  .ad-vault-card { bottom: 0; }
-  .sponsorship-steps { gap: 12px; margin-top: 12px; padding-block: 20px; }
-  .sponsorship-steps span { font-size: 8px; line-height: 1.6; }
-  .sponsorship-steps b { display: block; margin-bottom: 3px; }
-  .sponsorship-steps i { font-size: 10px; }
   .playground-section { grid-template-columns: 1fr; gap: 30px; padding-top: 15px; }
   .playground-intro h2 { font-size: 44px; }
   .playground-intro > p { max-width: 100%; font-size: 13px; }
@@ -561,10 +502,6 @@ h2 { font-size: clamp(38px, 4vw, 56px); line-height: 1.16; letter-spacing: -.055
   .card-scene { transform: scale(.7); }
   .hero-visual { height: 410px; }
   .orbit-two { width: 315px; height: 315px; top: 42px; left: calc(50% - 157.5px); }
-  .sponsorship-copy h2 { font-size: 40px; }
-  .sponsorship-panel { padding-inline: 22px; }
-  .sponsorship-art { transform: scale(.82); }
-  .ad-vault-card { left: calc(50% - 125px); }
   .final-cta h2 { font-size: 66px; }
   .preview-note { font-size: 6px; }
 }

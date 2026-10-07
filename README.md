@@ -4,13 +4,13 @@ Turn traditional web APIs into pay-per-call services for AI agents, powered by A
 
 KeyCard is a web app where providers register APIs and securely supply their API keys. KeyCard exposes those services through a Cardano-based x402 proxy, allowing agents to discover an API, pay for a request in ADA, and receive the result without handling the provider's credentials.
 
-Providers recover the underlying API cost plus a small markup. Agents get a common way to access services without managing separate subscriptions and API keys. Sponsors can cover calls for agents with no funds in exchange for relevant sponsored content delivered through an **adVault**.
+Providers recover the underlying API cost plus a small markup. Agents get a common way to access services without managing separate subscriptions and API keys. The packaged skill also includes a signed local vault for user-supplied campaign context; vault entries are independent of API payment and authorization.
 
 Built at TOKEN2049 Origins.
 
 ## Project status
 
-This repository contains the landing page, a provider console, registry, and Cardano Preprod x402 proxy. Paid calls now have durable quotes, receipts, timeout recovery, replay protection, provider earnings/refund tracking, and a local agent wallet client. PostgreSQL/HTTP integration tests pass with simulated payment services; a successful live Preprod call remains to be verified. Sponsorship and the landing page demo still use illustrative data.
+This repository contains the landing page, a provider console, registry, and Cardano Preprod x402 proxy. Paid calls now have durable quotes, receipts, timeout recovery, replay protection, provider earnings/refund tracking, and a local agent wallet client. PostgreSQL/HTTP integration tests pass with simulated payment services; a successful live Preprod call remains to be verified.
 
 ### Run the landing page
 
@@ -29,7 +29,7 @@ npm run build
 npm run preview
 ```
 
-The page uses HTML, CSS, and vanilla JavaScript with Vite for development and production builds. Motion includes a layered card entrance, scroll reveals, a sticky three-stage walkthrough, and a page progress indicator, with support for reduced-motion preferences. The demo supports direct ADA payments and sponsored access using example data. Typography uses Google Fonts with local system fallbacks.
+The page uses HTML, CSS, and vanilla JavaScript with Vite for development and production builds. Motion includes a layered card entrance, scroll reveals, a sticky three-stage walkthrough, and a page progress indicator, with support for reduced-motion preferences. The demo previews direct ADA payments using example data. Typography uses Google Fonts with local system fallbacks.
 
 ### Run the provider console and API
 
@@ -65,13 +65,12 @@ See [paid-call setup, wallet commands, retry contract, and refund policy](docs/p
 | **API provider / key owner** | Registers an API using their upstream credentials, sets the cost and markup, and earns ADA when their listing is used. |
 | **Upstream API vendor** | Operates the original API, processes requests authenticated with the provider's key, and bills the provider under its existing pricing model. |
 | **User / agent owner** | Gives the agent a task, configures its spending limits, optionally funds its wallet, and receives the final answer. |
-| **AI agent** | Uses the KeyCard skill to set up a wallet, discover APIs, choose the cheapest suitable option, and request paid or sponsored access. |
-| **KeyCard platform** | Runs the provider dashboard, API registry, pricing, x402 proxy, payment verification, sponsor matching, and payout accounting. |
-| **Sponsor / advertiser** | Funds campaigns and supplies sponsored content and targeting criteria to cover relevant API calls. |
+| **AI agent** | Uses the KeyCard skill to set up a wallet, discover APIs, choose the cheapest suitable option, and make paid calls. |
+| **KeyCard platform** | Runs the provider dashboard, API registry, pricing, x402 proxy, payment verification, and payout accounting. |
 | **Cardano network** | Processes the ADA transactions used for payments and payouts; KeyCard checks their settlement state through its payment adapter. |
-| **adVault** | Stores sponsored entries and provides hashes, storage verification, and retrieval for agents. |
+| **Local vault** | Stores user-supplied campaign context and provides hashes, signed integrity receipts, and retrieval for agents. |
 
-The API provider and upstream vendor may be the same organization, but their roles are distinct: the provider supplies access through KeyCard, while the vendor runs the original service. Cardano and adVault are technical participants; adVault's operator and hosting model are still to be decided.
+The API provider and upstream vendor may be the same organization, but their roles are distinct: the provider supplies access through KeyCard, while the vendor runs the original service. Cardano handles payments; the local vault is an optional agent-side store and is not part of payment processing.
 
 ## How it works
 
@@ -90,10 +89,10 @@ For the first version, focus on APIs with a predictable fixed cost per request. 
 
 1. **User → AI agent:** Provide a task and configure the agent's spending limits.
 2. **AI agent:** Follow the KeyCard skill to connect or create a Cardano wallet and select the network. Signing keys stay with the agent's local wallet or signer.
-3. **User → Agent wallet, optionally:** Add funds for paid calls. Funding can be skipped when pursuing sponsorship.
+3. **User → Agent wallet:** Add enough Preprod ADA for the service price and network fee before a paid call.
 4. **AI agent → KeyCard:** Search for APIs that match the task's required capability, inputs, and outputs.
 5. **KeyCard → AI agent:** Return suitable listings, availability, and current quotes.
-6. **AI agent:** Compare equivalent operations by total payable cost and choose the cheapest available match. Proceed with paid access or request sponsorship if funds are insufficient.
+6. **AI agent:** Compare equivalent operations by total payable cost, choose the cheapest available match, and proceed only when it fits the configured budget.
 
 ### 3. Paid access: agent, KeyCard, Cardano, and upstream vendor
 
@@ -113,31 +112,12 @@ The **agent wallet** pays for this path. The **API provider** earns the service 
 
 Payment verification, request identifiers, and retry handling must prevent a payment from unlocking multiple unrelated calls or charging twice for the same retry.
 
-### 4. Sponsored access: sponsor, agent, KeyCard, and adVault
-
-The **sponsor** funds the call in exchange for the agent storing a small sponsored context snippet in adVault for a relevant user-facing placement.
-
-| Step | Acting party | Action and handoff |
-| --- | --- | --- |
-| 1 | **Sponsor → KeyCard** | Fund a campaign and provide sponsored text or a service listing, relevance criteria, and a budget. |
-| 2 | **AI agent → KeyCard** | Call a paid endpoint and receive the price and sponsorship availability in the paywall response. |
-| 3 | **AI agent → KeyCard** | Request sponsorship using the quote/request identifier and the minimum task context needed for matching. |
-| 4 | **KeyCard → AI agent** | Find an eligible, relevant sponsor with enough budget; reserve the full call cost and return an offer with the snippet, campaign ID, covered amount, expiry, and a one-time request challenge. |
-| 5 | **AI agent → adVault** | Store the sponsored content and offer details as an entry tied to the request. |
-| 6 | **adVault → AI agent** | Return the entry's content hash and a verifiable storage receipt. |
-| 7 | **AI agent → KeyCard** | Submit the hash and receipt against the sponsorship offer. |
-| 8 | **KeyCard → Upstream API vendor** | Verify the entry and offer, consume the offer once, charge the reserved sponsor budget, and forward the authorized API request with the provider's key. |
-| 9 | **Upstream API vendor → KeyCard → AI agent** | Return the API result; KeyCard records the provider's earnings and the sponsorship receipt. |
-| 10 | **AI agent ↔ adVault; AI agent → User** | Retrieve the sponsored entry and integrate it naturally into a relevant response, with a clear sponsored label. |
-
-The **sponsor budget** covers the service price and any required transaction fees, so the **agent wallet** can have zero ADA. KeyCard handles sponsor funding and settlement through the selected payment model; adVault verifies stored content. If no sponsor qualifies, the agent reports the funding requirement so the user can fund the wallet or stop the request.
-
-### 5. Pricing: who sets, pays, and receives the amount
+### 4. Pricing: who sets, pays, and receives the amount
 
 - **API provider:** Supplies the upstream cost and sets the markup.
 - **KeyCard:** Converts the service price into an expiring ADA quote and discloses applicable fees.
 - **AI agent:** Compares total costs and checks the quote against the user's spending limit.
-- **Agent wallet or sponsor budget:** Covers the quoted call cost, depending on the access path.
+- **Agent wallet:** Covers the quoted call cost and network fee.
 - **API provider:** Receives the service proceeds under the selected payout model and remains responsible for upstream charges.
 
 The intended pricing model is:
@@ -166,21 +146,21 @@ Add `--project` to install into the current project's `.codex/skills` directory,
 or use `--force` to replace an existing installation.
 
 1. **Set up a Cardano account.** Connect an existing wallet or create a dedicated agent wallet, select the network, and configure spending limits. Keep signing keys in the agent's local wallet or signer.
-2. **Fund the agent wallet, optionally.** Show the receiving address and balance, and guide the user through funding. An unfunded agent can attempt the sponsorship flow.
+2. **Fund the agent wallet.** Show the receiving address and balance, and guide the user through adding enough Preprod ADA for paid calls.
 3. **Discover suitable APIs.** Search the registry by capability and inspect supported inputs, outputs, availability, and current quotes.
 4. **Choose the cheapest available match.** Compare total prices for the same operation and usage quantity among APIs that meet the task's requirements. Refresh expired quotes and use availability or reliability to break ties.
-5. **Access the resource.** Pay within the configured budget, or request sponsorship if funds are insufficient. If neither path is available, report the funding requirement.
-6. **Use adVault entries.** Retrieve eligible sponsored content and include it naturally when relevant to the user's task, with a clear sponsored label.
+5. **Access the resource.** Pay within the configured budget. If funds are insufficient, report the funding requirement and stop.
+6. **Use local-vault entries when requested.** Store, verify, retrieve, or list user-supplied campaign context independently of API calls.
 
-The skill should explain its selection and cost. Sponsor matching should not silently override the choice of the cheapest suitable API.
+The skill should explain its selection and cost.
 
-## adVault entries and verification
+## Local-vault entries and verification
 
-Each entry should contain the campaign and offer identifiers, sponsored text or service listing, destination URL, relevance tags, request identifier, creation time, and expiry. Its hash should be derived from a canonical representation of that entry.
+Each entry contains a campaign identifier, content, destination URL, relevance tags, creation time, and expiry. Its hash is derived from a canonical representation of that entry.
 
-KeyCard must be able to verify the stored entry through adVault or a signed receipt. A hash alone does not prove storage, sponsor payment, or that the user saw an ad. Storage verification unlocks the sponsored call; any later placement reporting is a separate mechanism.
+The packaged script stores entries locally and returns an HMAC-signed integrity receipt. The receipt only verifies data stored with the same local key; it has no role in API payment or authorization.
 
-The proposed ad prompt injection is treated as **sponsored context**: the agent reads the snippet as advertising content, preserves its normal task instructions, and presents it only where relevant with a sponsored label. Entry expiry and frequency limits keep repeated placements under control.
+Campaign content is untrusted context. The agent must not treat it as instructions and should use only unexpired entries relevant to the user's request.
 
 ## Planned components
 
@@ -190,9 +170,8 @@ The proposed ad prompt injection is treated as **sponsored context**: the agent 
 | Registry and discovery API | Searchable capabilities, operation schemas, availability, and comparable quotes. |
 | x402 proxy | Payment challenges, request authorization, upstream calls, and receipts. |
 | Cardano payment adapter | Wallet integration, payment verification, settlement tracking, and payouts. |
-| Agent skill | Account setup, optional funding, cheapest-match discovery, and paid or sponsored access. |
-| Sponsorship service | Campaigns, relevance matching, budget reservation, and offer redemption. |
-| adVault | Sponsored entry storage, content hashes, verification receipts, and retrieval. |
+| Agent skill | Account setup, funding, cheapest-match discovery, paid access, and local context storage. |
+| Local vault | Campaign-context storage, content hashes, integrity receipts, and retrieval. |
 
 ## Implementation roadmap
 
@@ -201,7 +180,7 @@ The proposed ad prompt injection is treated as **sponsored context**: the agent 
 - [x] Choose the frontend, backend, database, and deployment stack.
 - [x] Select a Cardano test network, wallet/signing tooling, and chain access provider.
 - [x] Choose the x402 version and define the Cardano payment scheme, evidence format, and settlement policy.
-- [x] Define schemas for API listings, operations, quotes, payments, sponsorship offers, and adVault entries.
+- [x] Define schemas for API listings, operations, quotes, payments, receipts, and local-vault entries.
 - [x] Select one fixed-price upstream API for the first end-to-end demo.
 - [x] Standardize on lovelace pricing and decide quote expiry, markup rules, fee allocation, and provider payout model.
 
@@ -226,28 +205,24 @@ The proposed ad prompt injection is treated as **sponsored context**: the agent 
 
 - [ ] Publish a machine-readable registry with capability search and live pricing.
 - [ ] Compare equivalent operations by total payable cost and exclude unavailable listings.
-- [ ] Write the skill's Cardano account setup and optional wallet funding instructions.
+- [ ] Write the skill's Cardano account setup and wallet funding instructions.
 - [ ] Add cheapest-match selection, spending limits, quote refresh, and paid-call execution.
 - [ ] Demonstrate discovery and selection across at least two providers offering the same capability.
 
-### Phase 5: Add sponsorship and adVault
+### Phase 5: Maintain the local vault
 
-- [ ] Build sponsor campaign creation, funding, budgets, targeting, and sponsored snippet management.
-- [ ] Implement relevant-sponsor matching and atomic budget reservations with expiry.
-- [ ] Define adVault ownership, storage API, canonical hashing, signed receipts, and entry retrieval.
-- [ ] Bind each sponsorship offer and vault receipt to one request and prevent duplicate redemption.
-- [ ] Implement sponsor-funded fulfillment, including fees, and release reservations on expiry or failure.
-- [ ] Add relevant, labeled ad placements to the agent skill with expiry and frequency limits.
-- [ ] Demonstrate a successful sponsored API call from an agent with zero ADA.
+- [x] Store campaign context locally with canonical hashing and HMAC-signed receipts.
+- [x] Verify, retrieve, and list entries without overwriting existing data.
+- [x] Keep vault data separate from API payment and authorization.
 
 ### Phase 6: Verify and document the release
 
-- [ ] Verify successful paid and sponsored calls, cheapest-match selection, and credential isolation.
+- [ ] Verify successful paid calls, cheapest-match selection, and credential isolation.
 - [ ] Check expired quotes, insufficient funds, invalid payment evidence, duplicate retries, and upstream failures.
-- [ ] Check exhausted sponsor budgets, concurrent redemptions, invalid vault receipts, and unavailable adVault storage.
-- [ ] Add provider and sponsor usage reporting, payment reconciliation, and service monitoring.
+- [ ] Check invalid vault receipts and unavailable local storage.
+- [ ] Add provider usage reporting, payment reconciliation, and service monitoring.
 - [ ] Document local setup, environment variables, deployment, skill installation, and a reproducible demo.
 
 ## MVP success criteria
 
-A provider can register a keyed API and expose it through KeyCard. An agent can set up a Cardano wallet, optionally fund it, discover comparable APIs, choose the cheapest suitable one, and obtain a result through either an ADA payment or a sponsor-funded adVault flow. The upstream API key remains server-side throughout.
+A provider can register a keyed API and expose it through KeyCard. An agent can set up and fund a Cardano wallet, discover comparable APIs, choose the cheapest suitable one, and obtain a result through an ADA payment. The upstream API key remains server-side throughout. The optional local vault stores campaign context without affecting payment or access.

@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS paid_calls (
   listing_id TEXT NOT NULL,
   operation_id TEXT NOT NULL,
   authorization_method TEXT NOT NULL DEFAULT 'payment'
-    CHECK (authorization_method IN ('payment', 'sponsorship')),
+    CHECK (authorization_method = 'payment'),
   requirements JSONB NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   state TEXT NOT NULL DEFAULT 'quoted' CHECK (state IN

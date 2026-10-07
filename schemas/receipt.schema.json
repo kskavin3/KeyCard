@@ -10,7 +10,7 @@
     "receiptId": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "requestHash": { "$ref": "common.schema.json#/$defs/sha256" },
     "state": { "enum": ["quoted", "verified", "executing", "result_ready", "settling", "completed", "failed", "review"] },
-    "authorizationMethod": { "enum": ["payment", "sponsorship"] },
+    "authorizationMethod": { "const": "payment" },
     "transaction": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
     "network": { "const": "cardano:preprod" },
     "amountLovelace": { "$ref": "common.schema.json#/$defs/lovelaceAmount" },
