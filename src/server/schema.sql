@@ -5,6 +5,17 @@ CREATE TABLE IF NOT EXISTS providers (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS provider_users (
+  user_id TEXT PRIMARY KEY,
+  provider_id TEXT NOT NULL REFERENCES providers(provider_id) ON DELETE CASCADE,
+  display_name TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS provider_users_provider_idx ON provider_users(provider_id);
+
 CREATE TABLE IF NOT EXISTS api_listings (
   listing_id TEXT PRIMARY KEY,
   provider_id TEXT NOT NULL REFERENCES providers(provider_id) ON DELETE CASCADE,
@@ -37,20 +48,21 @@ CREATE TABLE IF NOT EXISTS api_credentials (
 );
 
 CREATE TABLE IF NOT EXISTS api_operations (
-  operation_id TEXT PRIMARY KEY,
+  operation_id TEXT NOT NULL,
   listing_id TEXT NOT NULL REFERENCES api_listings(listing_id) ON DELETE CASCADE,
+  proxy_id UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
   name TEXT NOT NULL,
   description TEXT NOT NULL,
   method TEXT NOT NULL CHECK (method IN ('GET', 'POST', 'PUT', 'PATCH', 'DELETE')),
   path TEXT NOT NULL,
   input_schema JSONB NOT NULL,
   output_schema JSONB NOT NULL,
-  price_usd_micros NUMERIC(24, 0) NOT NULL CHECK (price_usd_micros > 0),
+  price_lovelace NUMERIC(24, 0) NOT NULL CHECK (price_lovelace > 0),
   markup_basis_points INTEGER NOT NULL DEFAULT 200 CHECK (markup_basis_points >= 0),
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (listing_id, operation_id)
+  PRIMARY KEY (listing_id, operation_id)
 );
 
 CREATE INDEX IF NOT EXISTS api_listings_available_idx
@@ -66,6 +78,8 @@ CREATE TABLE IF NOT EXISTS paid_calls (
   provider_id TEXT NOT NULL REFERENCES providers(provider_id),
   listing_id TEXT NOT NULL,
   operation_id TEXT NOT NULL,
+  authorization_method TEXT NOT NULL DEFAULT 'payment'
+    CHECK (authorization_method IN ('payment', 'sponsorship')),
   requirements JSONB NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   state TEXT NOT NULL DEFAULT 'quoted' CHECK (state IN
@@ -83,6 +97,14 @@ CREATE TABLE IF NOT EXISTS paid_calls (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS paid_calls_provider_idx ON paid_calls(provider_id, created_at DESC);
+
+-- Completion receipts are append-only snapshots. Mutable recovery state remains
+-- in paid_calls while this record preserves what was issued at completion.
+CREATE TABLE IF NOT EXISTS call_receipts (
+  receipt_id TEXT PRIMARY KEY REFERENCES paid_calls(call_id),
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- A transfer may satisfy only one payment or refund obligation, including
 -- across the two roles. Claims and call updates commit in one transaction.

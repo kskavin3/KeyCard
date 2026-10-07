@@ -70,9 +70,9 @@ erDiagram
         text description
         jsonb input_schema
         jsonb output_schema
-        decimal upstream_cost_usd
+        bigint price_lovelace
         int markup_bps
-        decimal service_price_usd
+        bigint effective_price_lovelace
         boolean is_available
         timestamptz created_at
         timestamptz updated_at

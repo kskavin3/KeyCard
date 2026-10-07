@@ -24,7 +24,7 @@ current HTTP lifecycle, recovery rules, and refund policy.
    show the Preprod address and let the user fund it rather than sending funds.
 4. Search `GET /api/discovery?capability=CAPABILITY`. Keep only available,
    enabled operations whose method and input/output schemas satisfy the task.
-   Compare equivalent operations using `pricing.priceUsdMicros`; use reliability
+   Compare equivalent operations using `pricing.effectivePriceLovelace`; use reliability
    or availability only as a tie-breaker. Explain the selected listing and price.
    The final 402 quote and transaction fee determine the actual ADA total, so do
    not describe the registry price alone as the final charge.

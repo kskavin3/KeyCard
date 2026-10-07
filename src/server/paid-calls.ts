@@ -8,6 +8,7 @@ import { jcs } from '@x402/cardano';
 type State = 'quoted' | 'verified' | 'executing' | 'result_ready' | 'settling' | 'completed' | 'failed' | 'review';
 export type PaidCall = {
   call_id: string; request_hash: string; provider_id: string; listing_id: string; operation_id: string;
+  authorization_method: 'payment' | 'sponsorship';
   requirements: PaymentRequirements; expires_at: Date; created_at: Date; state: State;
   tx_hash?: string; payment_payload?: PaymentPayload; payer?: string;
   response_status?: number; response_body?: any; settlement?: SettleResponse;
@@ -48,17 +49,23 @@ async function saveCall(client: PoolClient, call: PaidCall) {
       if (!claim || claim.call_id !== call.call_id || claim.purpose !== purpose) throw fail('This transaction is already bound to another payment or refund.');
     }
     await client.query(`INSERT INTO paid_calls
-      (call_id,request_hash,provider_id,listing_id,operation_id,requirements,expires_at,created_at,state,
+      (call_id,request_hash,provider_id,listing_id,operation_id,authorization_method,requirements,expires_at,created_at,state,
        tx_hash,payment_payload,payer,response_status,response_body,settlement,payment_confirmed,refund_status,refund_tx_hash)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
       ON CONFLICT (call_id) DO UPDATE SET state=EXCLUDED.state,tx_hash=EXCLUDED.tx_hash,
        payment_payload=EXCLUDED.payment_payload,payer=EXCLUDED.payer,response_status=EXCLUDED.response_status,
        response_body=EXCLUDED.response_body,settlement=EXCLUDED.settlement,
        payment_confirmed=EXCLUDED.payment_confirmed,refund_status=EXCLUDED.refund_status,
        refund_tx_hash=EXCLUDED.refund_tx_hash,updated_at=now()`,
-      [call.call_id,call.request_hash,call.provider_id,call.listing_id,call.operation_id,call.requirements,
+      [call.call_id,call.request_hash,call.provider_id,call.listing_id,call.operation_id,call.authorization_method,call.requirements,
         call.expires_at,call.created_at,call.state,call.tx_hash,call.payment_payload,call.payer,
         call.response_status,call.response_body,call.settlement,call.payment_confirmed,call.refund_status,call.refund_tx_hash]);
+    if (call.state === 'completed' && call.payment_confirmed) {
+      await client.query(
+        'INSERT INTO call_receipts(receipt_id,payload) VALUES($1,$2) ON CONFLICT(receipt_id) DO NOTHING',
+        [call.call_id, receipt(call)],
+      );
+    }
     await client.query('COMMIT');
   } catch (error: any) {
     await client.query('ROLLBACK');
@@ -78,10 +85,12 @@ type Dependencies = {
   quote(path: string): Promise<{ requirements: PaymentRequirements; providerId: string; listingId: string; operationId: string }>;
   upstream(req: Request): Promise<unknown>;
 };
+type ResponsePlan = { status: number; body: unknown; headers?: Record<string, string> };
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const fail = (message: string, status = 409) => Object.assign(new Error(message), { status });
 export function receipt(call: PaidCall) {
   return { receiptId: call.call_id, requestHash: `sha256:${call.request_hash}`, state: call.state,
+    authorizationMethod: call.authorization_method,
     transaction: call.tx_hash ?? null, network: call.requirements.network, amountLovelace: call.requirements.amount,
     payTo: call.requirements.payTo, paymentConfirmed: call.payment_confirmed,
     payoutStatus: call.payment_confirmed ? 'paid-directly' : 'pending', refundStatus: call.refund_status,
@@ -104,6 +113,7 @@ export function createPaidHandler(deps: Dependencies) {
           if (req.get('PAYMENT-SIGNATURE')) throw fail('Request a quote with this Idempotency-Key before supplying payment.', 400);
           const quote = await deps.quote(req.path);
           call = { call_id: id, request_hash: fingerprint, provider_id: quote.providerId, listing_id: quote.listingId,
+            authorization_method: 'payment',
             operation_id: quote.operationId, requirements: quote.requirements,
             expires_at: new Date(now() + quote.requirements.maxTimeoutSeconds * 1000), created_at: new Date(now()),
             state: 'quoted', payment_confirmed: false, refund_status: 'none' };
@@ -125,16 +135,15 @@ export function createPaidHandler(deps: Dependencies) {
           await reconcileCall(call, deps.gateway, session);
         }
         if (call.state === 'completed' || call.state === 'failed' || call.state === 'review') {
-          return sendStored(res, call);
+          return storedResponse(call);
         }
         if (call.state === 'quoted') {
           if (new Date(call.expires_at).getTime() <= now()) throw fail('Quote expired. Start a new unpaid call with a new Idempotency-Key.', 410);
           if (!payload) {
             const challenge = { x402Version: 2, resource: { url: new URL(req.originalUrl, deps.origin).href,
               description: 'KeyCard paid API call', mimeType: 'application/json' }, accepts: [call.requirements] };
-            res.setHeader('PAYMENT-REQUIRED', encodePaymentRequiredHeader(challenge));
-            res.status(402).json({ ...challenge, quote: { expiresAt: call.expires_at, requestHash: `sha256:${fingerprint}` } });
-            return true;
+            return { status: 402, headers: { 'PAYMENT-REQUIRED': encodePaymentRequiredHeader(challenge) },
+              body: { ...challenge, quote: { expiresAt: call.expires_at, requestHash: `sha256:${fingerprint}` } } } satisfies ResponsePlan;
           }
           let verified: VerifyResponse;
           try { verified = await deps.gateway.verify(payload, call.requirements); }
@@ -152,7 +161,7 @@ export function createPaidHandler(deps: Dependencies) {
           call.state = 'review'; call.response_status = 503;
           call.response_body = { error: 'Upstream outcome needs provider review. Do not create a replacement payment.' };
           await session.save(call);
-          return sendStored(res, call);
+          return storedResponse(call);
         }
         if (call.state === 'verified') {
           call.state = 'executing'; await session.save(call);
@@ -168,7 +177,7 @@ export function createPaidHandler(deps: Dependencies) {
               if (evidence) { call.payment_confirmed = true; call.settlement = evidence; call.refund_status = 'due'; }
             } catch { /* Provider reconciliation also scans failed calls. */ }
             await session.save(call);
-            return sendStored(res, call);
+            return storedResponse(call);
           }
           call.state = 'result_ready'; await session.save(call);
         }
@@ -184,31 +193,33 @@ export function createPaidHandler(deps: Dependencies) {
         if (settlement?.success && settlement.transaction === call.tx_hash && settlement.network === call.requirements.network) {
           call.settlement = settlement; call.payment_confirmed = true; call.state = 'completed';
           await session.save(call);
-          return sendStored(res, call);
+          return storedResponse(call);
         }
         // Only an explicit pre-ledger definitive rejection is safe to fail.
         if (settlement?.errorReason === 'exact_cardano_settlement_definitively_rejected') {
           call.state = 'failed'; call.response_status = 402;
           call.response_body = { error: 'Payment was definitively rejected before ledger acceptance.' };
           await session.save(call);
-          return sendStored(res, call);
+          return storedResponse(call);
         }
-        res.setHeader('Retry-After', '5');
-        res.status(202).json({ status: 'payment-pending', receipt: receipt(call),
-          retry: 'Repeat the identical request with the same Idempotency-Key. Never sign a replacement transaction.' });
-        return true;
+        return { status: 202, headers: { 'Retry-After': '5' }, body: { status: 'payment-pending', receipt: receipt(call),
+          retry: 'Repeat the identical request with the same Idempotency-Key. Never sign a replacement transaction.' } } satisfies ResponsePlan;
       });
       if (handled === undefined) {
         res.setHeader('Retry-After', '2');
         res.status(202).json({ status: 'call-in-progress', retry: 'Retry the identical request with the same Idempotency-Key.' });
+      } else {
+        for (const [name, value] of Object.entries(handled.headers ?? {})) res.setHeader(name, value);
+        res.status(handled.status).json(handled.body);
       }
     } catch (error) { next(error); }
   };
 }
-function sendStored(res: Response, call: PaidCall) {
-  if (call.settlement?.success) res.setHeader('PAYMENT-RESPONSE', encodePaymentResponseHeader(call.settlement));
-  res.status(call.response_status ?? 503).json({ ...call.response_body, receipt: receipt(call) });
-  return true;
+function storedResponse(call: PaidCall): ResponsePlan {
+  const headers = call.settlement?.success
+    ? { 'PAYMENT-RESPONSE': encodePaymentResponseHeader(call.settlement) }
+    : undefined;
+  return { status: call.response_status ?? 503, headers, body: { ...call.response_body, receipt: receipt(call) } };
 }
 
 // Read-only chain reconciliation never initiates a payment or upstream retry.

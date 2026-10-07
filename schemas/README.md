@@ -12,9 +12,10 @@ These JSON Schema Draft 2020-12 files define the planned public registry and MVP
 ## Assumptions
 
 - The v1 deployment is fixed to Cardano Preprod (`cardano:preprod`), x402 v2, the `exact` scheme, direct ADA (`asset: "lovelace"`), and `assetTransferMethod: "default"`.
-- ADA values are positive integer strings in lovelace. Fiat pricing is represented as USD micro-units so values remain integer-safe.
+- All listing and payment values are positive integer strings in lovelace. Decimal ADA is accepted only by user interfaces.
 - A quote's `requestHash` is SHA-256 over a canonicalized method, proxy path, and request body. Quote/offer expiry ordering and equality checks are enforced by application logic; JSON Schema validates timestamp syntax only.
 - The public listing schema intentionally has no upstream URL, credential, or secret field. Provider credentials belong in a separate private server-side model.
+- Each public operation includes its stable `proxyId` and complete `proxyUrl`; the identifier is routing metadata, while x402 remains the authorization boundary.
 - x402 transport headers carry base64-encoded protocol objects; `payment.schema.json` stores the submitted `PAYMENT-SIGNATURE` value as evidence. A facilitator record is a KeyCard audit envelope, not a standardized x402 facilitator response schema.
 - adVault canonicalization, hash encoding, signature format, facilitator API, and Cardano address validation beyond a basic Bech32-like shape remain implementation choices. Signature strings are modeled as base64 and signatures must still be cryptographically verified.
 

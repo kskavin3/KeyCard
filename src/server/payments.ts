@@ -4,7 +4,7 @@ import { addressCredentials, decodeCardanoTransaction } from '@x402/cardano';
 import { ExactCardanoScheme } from '@x402/cardano/exact/server';
 import { pool } from './db.js';
 import { createChainEvidence } from './chain-evidence.js';
-import { createAdaUsdRate, toLovelace } from './ada-price.js';
+import { effectivePriceLovelace } from './money.js';
 import type { PaymentPayload, PaymentRequirements } from '@x402/core/types';
 
 const network = 'cardano:preprod' as const;
@@ -49,12 +49,10 @@ async function getPaymentTarget(context: RequestContext) {
   return { ...row, payout_address: row.payout_address as string };
 }
 
-const getAdaUsdRate = createAdaUsdRate();
-
 async function getPaymentPrice(context: RequestContext) {
   const { listingId, operationId } = identifiers(context);
   const result = await pool.query(
-    `SELECT o.price_usd_micros, o.markup_basis_points
+    `SELECT o.price_lovelace, o.markup_basis_points
        FROM api_operations o
        JOIN api_listings l USING (listing_id)
       WHERE l.listing_id = $1 AND o.operation_id = $2
@@ -63,9 +61,7 @@ async function getPaymentPrice(context: RequestContext) {
   );
   const row = result.rows[0];
   if (!row) throw new Error('Paid API operation is unavailable.');
-  const priceMicros = (BigInt(String(row.price_usd_micros)) * BigInt(10_000 + row.markup_basis_points) + 9_999n) / 10_000n;
-  const lovelace = toLovelace(priceMicros.toString(), await getAdaUsdRate(), minimumLovelace);
-  return { asset, amount: lovelace.toString() };
+  return { asset, amount: effectivePriceLovelace(String(row.price_lovelace), row.markup_basis_points, minimumLovelace) };
 }
 
 const accepts = {
@@ -81,10 +77,15 @@ const accepts = {
 
 let initialization: Promise<void> | undefined;
 export async function issueQuote(path: string) {
+  const { listingId, operationId } = identifiers({ path, adapter: { getUrl: () => path } });
+  return issueQuoteForOperation(listingId, operationId);
+}
+
+export async function issueQuoteForOperation(listingId: string, operationId: string) {
   initialization ??= resourceServer.initialize().catch(error => { initialization = undefined; throw error; });
   await initialization;
+  const path = `/api/proxy/${encodeURIComponent(listingId)}/${encodeURIComponent(operationId)}`;
   const context = { path, adapter: { getUrl: () => path } };
-  const { listingId, operationId } = identifiers(context);
   const provider = await pool.query('SELECT provider_id FROM api_listings WHERE listing_id = $1', [listingId]);
   const requirements = (await resourceServer.buildPaymentRequirementsFromOptions([accepts], context))[0];
   return { requirements, providerId: provider.rows[0].provider_id as string, listingId, operationId };

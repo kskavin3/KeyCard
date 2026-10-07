@@ -4,12 +4,17 @@ import { resolve } from 'node:path';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormatsPlugin from 'ajv-formats';
 import express, { type Request, type Response } from 'express';
+import type { PoolClient } from 'pg';
+import { addressCredentials } from '@x402/cardano';
 import { pool } from './db.js';
 import { clearProviderSession, createProviderSession, requireProviderSession, requireSameOrigin, verifyProviderPassword } from './auth.js';
 import { decryptCredential, encryptCredential } from './credentials.js';
 import { assertAllowedDestination, safeFetch } from './proxy-security.js';
-import { issueQuote, paymentGateway, verifyRefund } from './payments.js';
-import { createPaidHandler, PgCallStore, receipt, reconcileCall } from './paid-calls.js';
+import { issueQuote, issueQuoteForOperation, paymentGateway } from './payments.js';
+import { createPaidHandler, PgCallStore } from './paid-calls.js';
+import { effectivePriceLovelace } from './money.js';
+import { authenticateProvider } from './accounts.js';
+import { providerPaymentsRouter } from './modules/provider-payments/router.js';
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 (addFormatsPlugin as unknown as (instance: Ajv2020) => void)(ajv);
@@ -31,7 +36,7 @@ type OperationInput = {
   path: string;
   inputSchema: Record<string, unknown>;
   outputSchema: Record<string, unknown>;
-  priceUsdMicros: string;
+  priceLovelace: string;
   markupBasisPoints?: number;
   enabled?: boolean;
 };
@@ -49,8 +54,9 @@ app.use(express.json({ limit: '256kb' }));
 app.use('/provider', express.static(resolve(process.cwd(), 'public/provider'), { index: 'index.html' }));
 
 const publicOrigin = process.env.KEYCARD_PUBLIC_ORIGIN ?? 'http://localhost:4020';
-const providerId = process.env.KEYCARD_PROVIDER_ID ?? 'provider-demo';
+const defaultProviderId = process.env.KEYCARD_PROVIDER_ID ?? 'provider-demo';
 const providerName = process.env.KEYCARD_PROVIDER_NAME ?? 'KeyCard Demo Provider';
+const minimumLovelace = BigInt(process.env.KEYCARD_MIN_PAYMENT_LOVELACE ?? '1500000');
 
 function invalid(message: string) {
   const error = new Error(message);
@@ -70,9 +76,9 @@ function positiveIntegerString(value: unknown): value is string {
   return typeof value === 'string' && /^[1-9][0-9]{0,23}$/.test(value);
 }
 
-function servicePriceUsdMicros(cost: string, markupBasisPoints: number) {
-  const numerator = BigInt(cost) * BigInt(10_000 + markupBasisPoints);
-  return ((numerator + 9_999n) / 10_000n).toString();
+function validPreprodAddress(value: unknown): value is string {
+  if (typeof value !== 'string' || !value.startsWith('addr_test1')) return false;
+  try { addressCredentials(value); return true; } catch { return false; }
 }
 
 function safePublicListing(row: any, operations: any[]) {
@@ -96,6 +102,8 @@ function safePublicOperation(row: any) {
   const operation = {
     operationId: row.operation_id,
     listingId: row.listing_id,
+    proxyId: String(row.proxy_id),
+    proxyUrl: `${publicOrigin.replace(/\/$/, '')}/api/proxy/${encodeURIComponent(String(row.proxy_id))}`,
     name: row.name,
     description: row.description,
     method: row.method,
@@ -104,7 +112,9 @@ function safePublicOperation(row: any) {
     outputSchema: row.output_schema,
     pricing: {
       model: 'fixed-per-call',
-      priceUsdMicros: servicePriceUsdMicros(String(row.price_usd_micros), row.markup_basis_points),
+      priceLovelace: String(row.price_lovelace),
+      effectivePriceLovelace: effectivePriceLovelace(String(row.price_lovelace), row.markup_basis_points, minimumLovelace),
+      asset: 'lovelace',
       markupBasisPoints: row.markup_basis_points,
     },
     enabled: row.enabled,
@@ -121,7 +131,7 @@ async function getListingOperations(listingId: string, onlyEnabled = false) {
   return result.rows;
 }
 
-async function forwardUpstream(listingId: string, operationId: string, req: Request, preview = false) {
+async function forwardUpstream(listingId: string, operationId: string, req: Request, preview = false, ownerId?: string) {
   const result = await pool.query(
     `SELECT l.listing_id, l.provider_id, l.availability,
             u.base_url, u.allowed_hosts, u.request_timeout_ms,
@@ -135,7 +145,7 @@ async function forwardUpstream(listingId: string, operationId: string, req: Requ
     [listingId, operationId],
   );
   const row = result.rows[0];
-  if (!row || row.provider_id !== providerId) throw Object.assign(new Error('Listing not found.'), { status: 404 });
+  if (!row || (ownerId && row.provider_id !== ownerId)) throw Object.assign(new Error('Listing not found.'), { status: 404 });
   if (row.availability !== 'available' || !row.enabled) throw Object.assign(new Error('Operation is unavailable.'), { status: 409 });
   if (!preview && req.method !== row.method) throw Object.assign(new Error(`Use ${row.method} for this operation.`), { status: 405 });
 
@@ -214,9 +224,16 @@ async function forwardUpstream(listingId: string, operationId: string, req: Requ
 }
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.post('/api/cardano/validate-address', (req, res) => {
+  const address = req.body?.address;
+  return validPreprodAddress(address)
+    ? res.json({ valid: true, network: 'cardano:preprod', address })
+    : res.status(400).json({ error: 'Provide a valid Cardano Preprod payment address.' });
+});
 
 const loginAttempts = new Map<string, { count: number; expiresAt: number }>();
-app.post('/api/provider/session', requireSameOrigin, (req, res) => {
+app.post('/api/provider/session', requireSameOrigin, async (req, res, next) => {
+  try {
   const key = req.ip ?? 'unknown';
   const now = Date.now();
   const attempt = loginAttempts.get(key);
@@ -227,10 +244,15 @@ app.post('/api/provider/session', requireSameOrigin, (req, res) => {
     count: attempt && attempt.expiresAt > now ? attempt.count + 1 : 1,
     expiresAt: attempt && attempt.expiresAt > now ? attempt.expiresAt : now + 60_000,
   });
-  if (!verifyProviderPassword(req.body?.password)) return res.status(401).json({ error: 'Invalid provider password.' });
+  const requestedProviderId = typeof req.body?.providerId === 'string' ? req.body.providerId : defaultProviderId;
+  let authenticated = await authenticateProvider(requestedProviderId, req.body?.password);
+  // Preserve isolated integration tests that import the app without server bootstrap.
+  if (!authenticated && requestedProviderId === defaultProviderId) authenticated = verifyProviderPassword(req.body?.password);
+  if (!authenticated) return res.status(401).json({ error: 'Invalid provider password.' });
   loginAttempts.delete(key);
-  const expiresAt = createProviderSession(res);
-  return res.json({ providerId, expiresAt: new Date(expiresAt * 1000).toISOString() });
+  const expiresAt = createProviderSession(res, requestedProviderId);
+  return res.json({ providerId: requestedProviderId, expiresAt: new Date(expiresAt * 1000).toISOString() });
+  } catch (error) { return next(error); }
 });
 
 app.delete('/api/provider/session', requireSameOrigin, (_req, res) => {
@@ -238,15 +260,19 @@ app.delete('/api/provider/session', requireSameOrigin, (_req, res) => {
   res.status(204).end();
 });
 
-app.get('/api/provider/me', requireProviderSession, (_req, res) => {
-  res.json({ providerId, providerName });
+app.get('/api/provider/me', requireProviderSession, async (_req, res, next) => {
+  try {
+    const result = await pool.query('SELECT name FROM providers WHERE provider_id=$1', [res.locals.providerId]);
+    if (!result.rows[0]) return res.status(401).json({ error: 'Provider account no longer exists.' });
+    return res.json({ providerId: res.locals.providerId, providerName: result.rows[0].name });
+  } catch (error) { return next(error); }
 });
 
 app.get('/api/provider/listings', requireProviderSession, async (_req, res, next) => {
   try {
     const listings = await pool.query(
       'SELECT l.*, u.base_url, u.allowed_hosts, u.request_timeout_ms, c.auth_mode, c.auth_field FROM api_listings l JOIN upstream_configs u USING (listing_id) JOIN api_credentials c USING (listing_id) WHERE l.provider_id = $1 ORDER BY l.created_at DESC',
-      [providerId],
+      [res.locals.providerId],
     );
     const output = await Promise.all(listings.rows.map(async row => ({
       listingId: row.listing_id,
@@ -267,19 +293,27 @@ app.get('/api/provider/listings', requireProviderSession, async (_req, res, next
 });
 
 app.post('/api/provider/listings', requireSameOrigin, requireProviderSession, async (req, res, next) => {
-  const client = await pool.connect();
+  let client: PoolClient | undefined;
   try {
+    const currentProviderId = String(res.locals.providerId);
     const { listing, upstream, credential, operations } = req.body ?? {};
     if (!isRecord(listing) || !isRecord(upstream) || !isRecord(credential) || !Array.isArray(operations)) {
       throw invalid('Provide listing, upstream, credential, and operations.');
     }
     const listingInput = listing as ListingInput;
     const listingId = listingInput.listingId ?? `listing-${randomUUID()}`;
-    if (!validId(listingId) || typeof listingInput.name !== 'string' || typeof listingInput.description !== 'string') {
+    const listingName = typeof listingInput.name === 'string' ? listingInput.name.trim() : '';
+    const listingDescription = typeof listingInput.description === 'string' ? listingInput.description.trim() : '';
+    if (!validId(listingId) || listingName.length < 1 || listingName.length > 160 || listingDescription.length < 1 || listingDescription.length > 4000) {
       throw invalid('Listing needs a valid ID, name, and description.');
     }
     if (!Array.isArray(listingInput.capabilities) || listingInput.capabilities.length === 0 || listingInput.capabilities.length > 20) {
       throw invalid('Provide between one and twenty capabilities.');
+    }
+    if (listingInput.capabilities.some(value => typeof value !== 'string')) throw invalid('Capabilities must be text values.');
+    const capabilities = [...new Set(listingInput.capabilities.map(value => value.trim()))];
+    if (capabilities.some(value => value.length < 1 || value.length > 100)) {
+      throw invalid('Capability names must contain between one and 100 characters.');
     }
 
     const baseUrlText = upstream.baseUrl;
@@ -311,12 +345,15 @@ app.post('/api/provider/listings', requireSameOrigin, requireProviderSession, as
       if (!isRecord(raw)) throw invalid(`Operation ${index + 1} must be an object.`);
       const operation = raw as OperationInput;
       const operationId = operation.operationId ?? `operation-${randomUUID()}`;
-      if (!validId(operationId) || typeof operation.name !== 'string' || typeof operation.description !== 'string') throw invalid(`Operation ${index + 1} has invalid identifiers or text.`);
+      const proxyId = randomUUID();
+      const name = typeof operation.name === 'string' ? operation.name.trim() : '';
+      const description = typeof operation.description === 'string' ? operation.description.trim() : '';
+      if (!validId(operationId) || name.length < 1 || name.length > 120 || description.length < 1 || description.length > 2000) throw invalid(`Operation ${index + 1} has invalid identifiers or text.`);
       if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(operation.method)) throw invalid(`Operation ${operationId} has an unsupported method.`);
-      if (typeof operation.path !== 'string' || !operation.path.startsWith('/') || operation.path.startsWith('//') || operation.path.includes('?') || operation.path.includes('#') || operation.path.split('/').some(part => part === '..')) {
+      if (typeof operation.path !== 'string' || operation.path.length > 2048 || !operation.path.startsWith('/') || operation.path.startsWith('//') || operation.path.includes('?') || operation.path.includes('#') || operation.path.split('/').some(part => part === '..')) {
         throw invalid(`Operation ${operationId} must use a safe absolute path without query or traversal segments.`);
       }
-      if (!positiveIntegerString(operation.priceUsdMicros)) throw invalid(`Operation ${operationId} needs a positive USD micro-unit cost.`);
+      if (!positiveIntegerString(operation.priceLovelace)) throw invalid(`Operation ${operationId} needs a positive integer lovelace cost.`);
       const markupBasisPoints = operation.markupBasisPoints ?? 200;
       if (!Number.isInteger(markupBasisPoints) || markupBasisPoints < 0 || markupBasisPoints > 1_000_000) throw invalid(`Operation ${operationId} has an invalid markup.`);
       if (!isRecord(operation.inputSchema) || !ajv.validateSchema(operation.inputSchema)) throw invalid(`Operation ${operationId} has an invalid input JSON Schema.`);
@@ -324,50 +361,58 @@ app.post('/api/provider/listings', requireSameOrigin, requireProviderSession, as
       const publicOperation = {
         operationId,
         listingId,
-        name: operation.name,
-        description: operation.description,
+        proxyId,
+        proxyUrl: `${publicOrigin.replace(/\/$/, '')}/api/proxy/${proxyId}`,
+        name,
+        description,
         method: operation.method,
         path: operation.path,
         inputSchema: operation.inputSchema,
         outputSchema: operation.outputSchema,
         pricing: {
           model: 'fixed-per-call',
-          priceUsdMicros: servicePriceUsdMicros(operation.priceUsdMicros, markupBasisPoints),
+          priceLovelace: operation.priceLovelace,
+          effectivePriceLovelace: effectivePriceLovelace(operation.priceLovelace, markupBasisPoints, minimumLovelace),
+          asset: 'lovelace',
           markupBasisPoints,
         },
         enabled: operation.enabled ?? true,
       };
       if (!validateOperation(publicOperation)) throw invalid(`Operation ${operationId} does not match the KeyCard operation contract.`);
-      return { ...operation, operationId, markupBasisPoints };
+      return { ...operation, operationId, proxyId, name, description, markupBasisPoints };
     });
-
-    const capabilities = listingInput.capabilities.map(value => String(value).trim()).filter(Boolean);
-    if (capabilities.some(value => value.length > 100)) throw invalid('Capability names must be 100 characters or fewer.');
+    const operationIds = normalizedOperations.map(operation => operation.operationId);
+    if (new Set(operationIds).size !== operationIds.length) throw invalid('Operation IDs must be unique within a listing.');
+    if (!normalizedOperations.some(operation => operation.enabled !== false)) throw invalid('Enable at least one operation.');
     const encrypted = encryptCredential(secret);
+    const payoutAddress = req.body?.payoutAddress ?? process.env.KEYCARD_PAY_TO;
+    if (!validPreprodAddress(payoutAddress)) throw invalid('Provide a valid Cardano Preprod payout address.');
 
+    client = await pool.connect();
     await client.query('BEGIN');
     await client.query(
       `INSERT INTO providers (provider_id, name, payout_address)
        VALUES ($1, $2, $3)
-       ON CONFLICT (provider_id) DO UPDATE SET name = EXCLUDED.name, payout_address = EXCLUDED.payout_address`,
-      [providerId, providerName, (req.body?.payoutAddress ?? process.env.KEYCARD_PAY_TO) ?? null],
+       ON CONFLICT (provider_id) DO UPDATE SET payout_address = EXCLUDED.payout_address`,
+      [currentProviderId, providerName, payoutAddress],
     );
-    await client.query(
+    const existingListing = await client.query('SELECT provider_id FROM api_listings WHERE listing_id = $1 FOR UPDATE', [listingId]);
+    if (existingListing.rows[0] && existingListing.rows[0].provider_id !== currentProviderId) {
+      throw Object.assign(new Error('Listing ID is already owned by another provider.'), { status: 409 });
+    }
+    const savedListing = await client.query(
       `INSERT INTO api_listings (listing_id, provider_id, name, description, capabilities)
        VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (listing_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, capabilities = EXCLUDED.capabilities, updated_at = now()`,
-      [listingId, providerId, listingInput.name.slice(0, 160), listingInput.description.slice(0, 4000), JSON.stringify([...new Set(capabilities)])],
+       ON CONFLICT (listing_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, capabilities = EXCLUDED.capabilities, updated_at = now()
+       WHERE api_listings.provider_id = EXCLUDED.provider_id
+       RETURNING listing_id`,
+      [listingId, currentProviderId, listingName, listingDescription, JSON.stringify(capabilities)],
     );
-    const operationIds = normalizedOperations.map((operation: OperationInput) => operation.operationId);
+    if (savedListing.rowCount !== 1) throw Object.assign(new Error('Listing ID is already owned by another provider.'), { status: 409 });
     await client.query(
       'DELETE FROM api_operations WHERE listing_id = $1 AND NOT (operation_id = ANY($2::text[]))',
       [listingId, operationIds],
     );
-    const operationConflicts = await client.query(
-      'SELECT operation_id FROM api_operations WHERE operation_id = ANY($1::text[]) AND listing_id <> $2',
-      [operationIds, listingId],
-    );
-    if (operationConflicts.rowCount) throw invalid('An operation ID is already used by another listing.');
     await client.query(
       `INSERT INTO upstream_configs (listing_id, base_url, allowed_hosts, request_timeout_ms)
        VALUES ($1, $2, $3, $4)
@@ -382,19 +427,31 @@ app.post('/api/provider/listings', requireSameOrigin, requireProviderSession, as
     );
     for (const operation of normalizedOperations) {
       await client.query(
-        `INSERT INTO api_operations (operation_id, listing_id, name, description, method, path, input_schema, output_schema, price_usd_micros, markup_basis_points, enabled)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         ON CONFLICT (operation_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, method = EXCLUDED.method, path = EXCLUDED.path, input_schema = EXCLUDED.input_schema, output_schema = EXCLUDED.output_schema, price_usd_micros = EXCLUDED.price_usd_micros, markup_basis_points = EXCLUDED.markup_basis_points, enabled = EXCLUDED.enabled, updated_at = now() WHERE api_operations.listing_id = EXCLUDED.listing_id`,
-        [operation.operationId, listingId, operation.name.slice(0, 120), operation.description.slice(0, 2000), operation.method, operation.path, JSON.stringify(operation.inputSchema), JSON.stringify(operation.outputSchema), operation.priceUsdMicros, operation.markupBasisPoints, operation.enabled ?? true],
+        `INSERT INTO api_operations (operation_id, listing_id, proxy_id, name, description, method, path, input_schema, output_schema, price_lovelace, markup_basis_points, enabled)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         ON CONFLICT (listing_id, operation_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, method = EXCLUDED.method, path = EXCLUDED.path, input_schema = EXCLUDED.input_schema, output_schema = EXCLUDED.output_schema, price_lovelace = EXCLUDED.price_lovelace, markup_basis_points = EXCLUDED.markup_basis_points, enabled = EXCLUDED.enabled, updated_at = now()`,
+        [operation.operationId, listingId, operation.proxyId, operation.name, operation.description, operation.method, operation.path, JSON.stringify(operation.inputSchema), JSON.stringify(operation.outputSchema), operation.priceLovelace, operation.markupBasisPoints, operation.enabled ?? true],
       );
     }
     await client.query('COMMIT');
-    return res.status(201).json({ listingId, operationIds: normalizedOperations.map((operation: OperationInput) => operation.operationId) });
+    const proxyRows = await client.query(
+      'SELECT operation_id,proxy_id FROM api_operations WHERE listing_id=$1 ORDER BY operation_id',
+      [listingId],
+    );
+    return res.status(201).json({
+      listingId,
+      operationIds,
+      proxyEndpoints: proxyRows.rows.map(row => ({
+        operationId: row.operation_id,
+        proxyId: String(row.proxy_id),
+        proxyUrl: `${publicOrigin.replace(/\/$/, '')}/api/proxy/${encodeURIComponent(String(row.proxy_id))}`,
+      })),
+    });
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
+    await client?.query('ROLLBACK').catch(() => undefined);
     next(error);
   } finally {
-    client.release();
+    client?.release();
   }
 });
 
@@ -407,7 +464,7 @@ app.put('/api/provider/listings/:listingId/credential', requireSameOrigin, requi
     if (mode === 'header' && /^(host|cookie|content-length|connection|transfer-encoding)$/i.test(field)) {
       throw invalid('This HTTP header cannot carry an upstream API key.');
     }
-    const listing = await pool.query('SELECT listing_id FROM api_listings WHERE listing_id = $1 AND provider_id = $2', [req.params.listingId, providerId]);
+    const listing = await pool.query('SELECT listing_id FROM api_listings WHERE listing_id = $1 AND provider_id = $2', [req.params.listingId, res.locals.providerId]);
     if (listing.rowCount !== 1) return res.status(404).json({ error: 'Listing not found.' });
     const encrypted = encryptCredential(value);
     await pool.query(
@@ -424,7 +481,7 @@ app.patch('/api/provider/listings/:listingId/availability', requireSameOrigin, r
     if (!['available', 'temporarily-unavailable', 'disabled'].includes(availability)) throw invalid('Choose a valid listing availability state.');
     const updated = await pool.query(
       'UPDATE api_listings SET availability = $3, updated_at = now() WHERE listing_id = $1 AND provider_id = $2 RETURNING listing_id',
-      [req.params.listingId, providerId, availability],
+      [req.params.listingId, res.locals.providerId, availability],
     );
     if (updated.rowCount !== 1) return res.status(404).json({ error: 'Listing not found.' });
     return res.json({ listingId: req.params.listingId, availability });
@@ -437,6 +494,7 @@ app.get('/api/discovery', async (req, res, next) => {
     const listingsResult = await pool.query(
       `SELECT * FROM api_listings
        WHERE availability = 'available'
+         AND EXISTS (SELECT 1 FROM api_operations o WHERE o.listing_id = api_listings.listing_id AND o.enabled = TRUE)
          AND ($1::text IS NULL OR EXISTS (
            SELECT 1 FROM jsonb_array_elements_text(capabilities) c(value) WHERE lower(c.value) = $1
          ))
@@ -455,7 +513,7 @@ app.get('/api/discovery', async (req, res, next) => {
 
 async function providerPreview(req: Request, res: Response, next: (error?: unknown) => void) {
   try {
-    const payload = await forwardUpstream(String(req.params.listingId), String(req.params.operationId), req, true);
+    const payload = await forwardUpstream(String(req.params.listingId), String(req.params.operationId), req, true, String(res.locals.providerId));
     res.json({ preview: true, result: payload, requestHash: `sha256:${createHash('sha256').update(JSON.stringify(req.body ?? req.query)).digest('hex')}` });
   } catch (error) { next(error); }
 }
@@ -468,57 +526,32 @@ app.all('/api/proxy/:listingId/:operationId', createPaidHandler({
   upstream: req => forwardUpstream(String(req.params.listingId), String(req.params.operationId), req),
 }));
 
-app.get('/api/provider/earnings', requireProviderSession, async (_req, res, next) => {
+app.all('/api/proxy/:proxyId', async (req, res, next) => {
   try {
-    const summary = await pool.query(`SELECT
-      COALESCE(sum((requirements->>'amount')::numeric) FILTER (WHERE payment_confirmed),0)::text AS received_lovelace,
-      COALESCE(sum((requirements->>'amount')::numeric) FILTER (WHERE state='completed' AND payment_confirmed),0)::text AS earned_lovelace,
-      COALESCE(sum((requirements->>'amount')::numeric) FILTER (WHERE refund_status='due'),0)::text AS refund_due_lovelace,
-      COALESCE(sum((requirements->>'amount')::numeric) FILTER (WHERE refund_status='paid'),0)::text AS refunded_lovelace,
-      count(*) FILTER (WHERE state='settling')::integer AS pending_calls,
-      count(*) FILTER (WHERE state='review')::integer AS review_calls
-      FROM paid_calls WHERE provider_id=$1`, [providerId]);
-    res.json({ ...summary.rows[0], payoutModel: 'direct-to-provider', platformFeeLovelace: '0' });
-  } catch (error) { next(error); }
-});
-
-app.get('/api/provider/payments', requireProviderSession, async (_req, res, next) => {
-  try {
-    const calls = await pool.query('SELECT * FROM paid_calls WHERE provider_id=$1 ORDER BY created_at DESC LIMIT 100', [providerId]);
-    res.json({ items: calls.rows.map(call => ({ ...receipt(call), listingId: call.listing_id,
-      operationId: call.operation_id, payer: call.payer, createdAt: call.created_at })) });
-  } catch (error) { next(error); }
-});
-
-app.post('/api/provider/payments/:receiptId/reconcile', requireSameOrigin, requireProviderSession, async (req, res, next) => {
-  try {
-    const result = await callStore.locked(String(req.params.receiptId), async session => {
-      const call = await session.load();
-      if (!call || call.provider_id !== providerId) throw Object.assign(new Error('Receipt not found.'), { status: 404 });
-      await reconcileCall(call, paymentGateway, session);
-      return receipt(call);
+    const proxyId = String(req.params.proxyId);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(proxyId)) {
+      return res.status(404).json({ error: 'Proxy endpoint not found.' });
+    }
+    const result = await pool.query(
+      'SELECT listing_id,operation_id FROM api_operations WHERE proxy_id=$1',
+      [proxyId],
+    );
+    const operation = result.rows[0];
+    if (!operation) return res.status(404).json({ error: 'Proxy endpoint not found.' });
+    const handler = createPaidHandler({
+      store: callStore,
+      gateway: paymentGateway,
+      origin: publicOrigin,
+      quote: () => issueQuoteForOperation(operation.listing_id, operation.operation_id),
+      upstream: request => forwardUpstream(operation.listing_id, operation.operation_id, request),
     });
-    res.status(result ? 200 : 409).json(result ?? { error: 'Call is in progress.' });
-  } catch (error) { next(error); }
+    return handler(req, res, next);
+  } catch (error) {
+    return next(error);
+  }
 });
 
-app.post('/api/provider/payments/:receiptId/refund', requireSameOrigin, requireProviderSession, async (req, res, next) => {
-  try {
-    const txHash = req.body?.transaction;
-    if (typeof txHash !== 'string' || !/^[a-f0-9]{64}$/.test(txHash)) throw invalid('Provide the confirmed refund transaction hash.');
-    const result = await callStore.locked(String(req.params.receiptId), async session => {
-      const call = await session.load();
-      if (!call || call.provider_id !== providerId) throw Object.assign(new Error('Receipt not found.'), { status: 404 });
-      if (call.refund_status === 'paid' && call.refund_tx_hash === txHash) return receipt(call);
-      if (call.refund_status !== 'due' || !call.payer || txHash === call.tx_hash) throw Object.assign(new Error('This payment has no refundable balance or verified payer address.'), { status: 409 });
-      if (!await verifyRefund(txHash, call.payer, call.requirements.amount, call.tx_hash!)) throw invalid('Refund must return the full service amount to the verified payer with one newer Preprod confirmation.');
-      call.refund_status = 'paid'; call.refund_tx_hash = txHash;
-      await session.save(call);
-      return receipt(call);
-    });
-    res.status(result ? 200 : 409).json(result ?? { error: 'Call is in progress.' });
-  } catch (error) { next(error); }
-});
+app.use('/api/provider', providerPaymentsRouter);
 
 app.use((error: any, _req: Request, res: Response, _next: unknown) => {
   const status = Number.isInteger(error?.status) ? error.status : 500;

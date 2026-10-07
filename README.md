@@ -137,12 +137,12 @@ The **sponsor budget** covers the service price and any required transaction fee
 The intended pricing model is:
 
 ```text
-service price in USD = upstream cost in USD × (1 + markup rate)
-service price in ADA = service price in USD ÷ quoted USD price per ADA
-total payer cost     = service price in ADA + any separately charged fees
+service price in ADA = provider cost in ADA × (1 + markup rate)
+quoted service cost  = max(service price, Cardano minimum output)
+total payer cost     = quoted service cost + network fee
 ```
 
-For example, an API request costing the provider **$1.00** with an illustrative **2% markup** would be quoted at the ADA equivalent of **$1.02**, plus any disclosed fees. The actual markup is configurable; the exchange-rate source, quote lifetime, and fee policy still need to be selected.
+For example, an API request listed at **2 ADA** with a **2% markup** is quoted at **2.04 ADA**, plus the Cardano network fee. Values are stored as integer lovelace so discovery and payment use the same amount.
 
 Discovery and checkout must show comparable total costs, including applicable network fees, so the cheapest listing is also the cheapest usable option for the requested operation.
 
@@ -188,7 +188,7 @@ The proposed ad prompt injection is treated as **sponsored context**: the agent 
 - [x] Choose the x402 version and define the Cardano payment scheme, evidence format, and settlement policy.
 - [x] Define schemas for API listings, operations, quotes, payments, sponsorship offers, and adVault entries.
 - [x] Select one fixed-price upstream API for the first end-to-end demo.
-- [x] Decide the exchange-rate source, quote expiry, markup rules, fee allocation, and provider payout model.
+- [x] Standardize on lovelace pricing and decide quote expiry, markup rules, fee allocation, and provider payout model.
 
 ### Phase 2: Build provider registration and the proxy
 

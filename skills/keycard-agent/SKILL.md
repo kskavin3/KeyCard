@@ -23,8 +23,8 @@ Use this skill from a KeyCard checkout with dependencies installed. Read
    is a concept demo, so do not promise free sponsored access to the real proxy.
 4. Search `/api/discovery?capability=...`. Inspect operation method and input and
    output schemas; exclude unavailable or unsuitable providers. Compare service
-   prices across suitable listings. The final ADA quote can include the minimum
-   output floor; include the actual transaction fee when assessing total cost.
+   prices using `pricing.effectivePriceLovelace` across suitable listings. The
+   final ADA quote includes the minimum output floor; include the actual transaction fee when assessing total cost.
    Use the cheapest suitable option that fits the user's budget. Explain the
    selection; do not silently raise the limits or change wallets.
 5. Generate a new secret random request ID for a new operation, e.g.

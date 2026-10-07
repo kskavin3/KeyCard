@@ -47,6 +47,23 @@ test('public listings accept discoverable data and reject provider secrets', () 
   assert.equal(validate({ ...listing, upstreamApiKey: 'must-not-leak' }), false);
 });
 
+test('operations expose canonical and effective ADA prices as lovelace strings', () => {
+  const validate = schemas.get('operation');
+  const operation = {
+    operationId: 'weather-current', listingId: listing.listingId,
+    proxyId: '2d246c0e-52d2-4e99-94a0-6fb1877c98dd',
+    proxyUrl: 'https://keycard.example/api/proxy/2d246c0e-52d2-4e99-94a0-6fb1877c98dd',
+    name: 'Current weather', description: 'Returns current conditions.',
+    method: 'GET', path: '/weather',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    outputSchema: { type: 'object', additionalProperties: true },
+    pricing: { model: 'fixed-per-call', priceLovelace: '2000000', effectivePriceLovelace: '2040000', asset: 'lovelace', markupBasisPoints: 200 },
+    enabled: true,
+  };
+  assert.equal(validate(operation), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...operation, pricing: { ...operation.pricing, priceLovelace: 2000000 } }), false);
+});
+
 test('quotes require the pinned Cardano Preprod exact/lovelace contract', () => {
   const validate = schemas.get('quote');
   const quote = {

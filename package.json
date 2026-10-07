@@ -13,7 +13,7 @@
     "start:api": "node dist-server/index.js",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --import tsx --test",
-    "test:payments": "KEYCARD_TEST_DATABASE_URL=postgres://keycard:keycard@127.0.0.1:5433/keycard node --import tsx --test src/paid-calls.test.js src/provider-payments.test.js"
+    "test:payments": "node scripts/run-payment-tests.mjs"
   },
   "engines": {
     "node": ">=20.19.0"

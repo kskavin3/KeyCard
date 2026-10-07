@@ -5,10 +5,12 @@
   "description": "A public, fixed-price operation exposed through the KeyCard proxy. Schemas for inputs and outputs are themselves JSON Schemas.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["operationId", "listingId", "name", "description", "method", "path", "inputSchema", "outputSchema", "pricing", "enabled"],
+  "required": ["operationId", "listingId", "proxyId", "proxyUrl", "name", "description", "method", "path", "inputSchema", "outputSchema", "pricing", "enabled"],
   "properties": {
     "operationId": { "$ref": "common.schema.json#/$defs/id" },
     "listingId": { "$ref": "common.schema.json#/$defs/id" },
+    "proxyId": { "type": "string", "format": "uuid", "description": "Stable opaque identifier used by the one-segment proxy route." },
+    "proxyUrl": { "type": "string", "format": "uri", "pattern": "^https?://", "description": "Complete payment-gated invocation URL for this operation." },
     "name": { "type": "string", "minLength": 1, "maxLength": 120 },
     "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
     "method": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
@@ -18,10 +20,12 @@
     "pricing": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["model", "priceUsdMicros", "markupBasisPoints"],
+      "required": ["model", "priceLovelace", "effectivePriceLovelace", "asset", "markupBasisPoints"],
       "properties": {
         "model": { "const": "fixed-per-call" },
-        "priceUsdMicros": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "Final service price in USD micro-units, as a positive integer string." },
+        "priceLovelace": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "Provider cost before markup, in integer lovelace." },
+        "effectivePriceLovelace": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "Payable service price after markup and the configured minimum." },
+        "asset": { "const": "lovelace" },
         "markupBasisPoints": { "type": "integer", "minimum": 0, "maximum": 1000000 }
       }
     },

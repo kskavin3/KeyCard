@@ -48,11 +48,9 @@ plan; it is not a production payment recommendation.
   first 1,000 calls per day as free and each additional call at USD 0.0015;
   using the pay-per-call product requires an enabled account. The provider
   supplies and controls the API key.
-- Use FreeCryptoAPI's `/getConversion?from=ADA&to=USD&amount=1` endpoint
-  for explicit ADA/USD conversion, authenticated with a server-side Bearer key
-  (`FREECRYPTOAPI_API_KEY`). Cache the rate for at most 60 seconds, reject
-  application-level errors even with HTTP 200, and fail closed when no fresh
-  rate is available. Keep quote conversion in integer arithmetic and round
+- Store provider pricing directly as integer lovelace. Accept decimal ADA only
+  at user-interface boundaries, convert it exactly to lovelace, and keep markup
+  and minimum-output calculations in integer arithmetic, rounding
   conservatively so payments cannot undercharge.
 - Set the default provider markup to 2% and the quote lifetime to five minutes.
   Lock the rate and amount into each quote; never recalculate an already-issued
@@ -89,12 +87,23 @@ verified on-chain before recording; reusable credits and automated refunds are n
 implemented. Provider payouts are the original direct transfers. See
 [the paid-call contract](paid-calls.md) for live acceptance requirements and limits.
 
+## Stable operation proxy URLs
+
+Every registered operation has a database-generated UUID `proxy_id` and the
+canonical public route `/api/proxy/{proxyId}`. The ID is stable across listing
+updates, unique across providers, and resolves server-side to the owning listing
+and operation before entering the existing x402 paid-call pipeline. It is an
+opaque routing identifier, not an authorization secret: discovery may publish it,
+while payment verification, input-schema validation, availability checks, and
+server-side credential injection still protect invocation. The older
+`/api/proxy/{listingId}/{operationId}` route remains available for compatibility.
+
 ## External setup needed for live settlement
 
 No external credentials are needed to build the application or run its local
 checks. A live Preprod demonstration will need a provider-owned OpenWeather
-API key enabled for One Call 4.0, a FreeCryptoAPI key, a testnet payout
-address, a CIP-30 wallet funded with Preprod tADA, and a Blockfrost Preprod
+API key enabled for One Call 4.0, a testnet payout address, a CIP-30 wallet
+funded with Preprod tADA, and a Blockfrost Preprod
 project ID for protocol-parameter lookups. Never put these values in source
 control.
 
@@ -106,6 +115,5 @@ control.
 - [Cardano Foundation x402 guide](https://developers.cardano.org/x402/)
 - [CIP-30 wallet guide](https://developers.cardano.org/docs/developers/curriculum/dapps/connect-a-wallet/)
 - [Blockfrost API documentation](https://docs.blockfrost.io/)
-- [FreeCryptoAPI documentation](https://freecryptoapi.com/documentation/)
 - [OpenWeather One Call API 4.0 pricing](https://openweathermap.org/price)
 - [OpenWeather API overview](https://openweathermap.org/api)

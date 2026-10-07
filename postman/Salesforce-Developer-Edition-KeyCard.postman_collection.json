@@ -1,0 +1,256 @@
+{
+  "info": {
+    "_postman_id": "0b4fc819-7dd2-4d52-a540-469136853bb8",
+    "name": "Salesforce Developer Edition - KeyCard Starter",
+    "description": "A curated subset of Salesforce Platform APIs suitable for evaluating KeyCard with a free Salesforce Developer Edition org. Derived from Salesforce's official REST and GraphQL documentation. No credentials are included.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('endpoint')) {",
+          "  throw new Error('Set endpoint to your Salesforce My Domain URL.');",
+          "}",
+          "if (!pm.environment.get('accessToken')) {",
+          "  throw new Error('Set accessToken to an OAuth access token for your Developer Edition org.');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "apiVersion", "value": "68.0", "type": "string" },
+    { "key": "sobject", "value": "Account", "type": "string" },
+    { "key": "accountId", "value": "", "type": "string" },
+    { "key": "searchTerm", "value": "KeyCard", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Discovery and metadata",
+      "description": "Low-risk operations useful for discovering Salesforce capabilities and generating KeyCard listings.",
+      "item": [
+        {
+          "name": "List API versions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{endpoint}}/services/data/",
+            "description": "Lists REST API versions exposed by the connected Salesforce org."
+          }
+        },
+        {
+          "name": "List resources for API version",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{endpoint}}/services/data/v{{apiVersion}}/",
+            "description": "Returns the top-level resources available for the selected API version."
+          }
+        },
+        {
+          "name": "Get org limits",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{endpoint}}/services/data/v{{apiVersion}}/limits/",
+            "description": "Returns allocations and remaining usage. The user needs View Setup and Configuration permission."
+          }
+        },
+        {
+          "name": "List sObjects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{endpoint}}/services/data/v{{apiVersion}}/sobjects/",
+            "description": "Lists standard and custom objects visible to the authenticated user."
+          }
+        },
+        {
+          "name": "Describe sObject",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{endpoint}}/services/data/v{{apiVersion}}/sobjects/{{sobject}}/describe/",
+            "description": "Returns fields, relationships, and metadata for the selected object. This is useful for deriving operation schemas."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Query and search",
+      "description": "Read-only data access that can be exposed as fixed-price KeyCard operations after constraining inputs and result sizes.",
+      "item": [
+        {
+          "name": "SOQL query Accounts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{endpoint}}/services/data/v{{apiVersion}}/query/?q=SELECT%20Id%2CName%2CIndustry%2CLastModifiedDate%20FROM%20Account%20ORDER%20BY%20LastModifiedDate%20DESC%20LIMIT%2010",
+              "host": ["{{endpoint}}"],
+              "path": ["services", "data", "v{{apiVersion}}", "query", ""],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "SELECT Id,Name,Industry,LastModifiedDate FROM Account ORDER BY LastModifiedDate DESC LIMIT 10"
+                }
+              ]
+            },
+            "description": "Runs a bounded SOQL query and returns up to ten Account records."
+          }
+        },
+        {
+          "name": "Parameterized search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{endpoint}}/services/data/v{{apiVersion}}/parameterizedSearch/?q={{searchTerm}}&sobject=Account&Account.fields=Id%2CName&Account.limit=10",
+              "host": ["{{endpoint}}"],
+              "path": ["services", "data", "v{{apiVersion}}", "parameterizedSearch", ""],
+              "query": [
+                { "key": "q", "value": "{{searchTerm}}" },
+                { "key": "sobject", "value": "Account" },
+                { "key": "Account.fields", "value": "Id,Name" },
+                { "key": "Account.limit", "value": "10" }
+              ]
+            },
+            "description": "Performs a bounded text search without requiring callers to construct SOSL."
+          }
+        },
+        {
+          "name": "GraphQL query Accounts",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query Accounts { uiapi { query { Account(first: 10, orderBy: { LastModifiedDate: { order: DESC } }) { edges { node { Id Name { value } Industry { value } } } } } } }\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{endpoint}}/services/data/v{{apiVersion}}/graphql",
+            "description": "Retrieves selected Account fields through Salesforce GraphQL API. GraphQL API is available in Developer Edition."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Record CRUD demo",
+      "description": "A self-contained Account lifecycle for a disposable Developer Edition org. Run in order. Do not run against production without review.",
+      "item": [
+        {
+          "name": "1 - Create demo Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Account created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('accountId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Name\": \"KeyCard Postman Demo\",\n  \"Description\": \"Disposable record created by the KeyCard Salesforce starter collection\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{endpoint}}/services/data/v{{apiVersion}}/sobjects/Account/",
+            "description": "Creates a disposable Account and stores its ID in accountId."
+          }
+        },
+        {
+          "name": "2 - Get demo Account",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{endpoint}}/services/data/v{{apiVersion}}/sobjects/Account/{{accountId}}?fields=Id,Name,Description,LastModifiedDate",
+            "description": "Retrieves the Account created by the previous request."
+          }
+        },
+        {
+          "name": "3 - Update demo Account",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Description\": \"Updated through a KeyCard candidate operation\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{endpoint}}/services/data/v{{apiVersion}}/sobjects/Account/{{accountId}}",
+            "description": "Updates only the demo Account's Description field."
+          }
+        },
+        {
+          "name": "4 - Delete demo Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Account deleted', () => pm.response.to.have.status(204));",
+                  "if (pm.response.code === 204) pm.collectionVariables.unset('accountId');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{endpoint}}/services/data/v{{apiVersion}}/sobjects/Account/{{accountId}}",
+            "description": "Deletes the disposable Account created by this collection."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Composite",
+      "description": "Combines multiple Salesforce REST subrequests into one HTTP call, making it a useful high-value KeyCard operation.",
+      "item": [
+        {
+          "name": "Composite read",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"allOrNone\": false,\n  \"compositeRequest\": [\n    {\n      \"method\": \"GET\",\n      \"url\": \"/services/data/v{{apiVersion}}/limits/\",\n      \"referenceId\": \"limits\"\n    },\n    {\n      \"method\": \"GET\",\n      \"url\": \"/services/data/v{{apiVersion}}/query/?q=SELECT%20Id%2CName%20FROM%20Account%20LIMIT%205\",\n      \"referenceId\": \"accounts\"\n    }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{endpoint}}/services/data/v{{apiVersion}}/composite",
+            "description": "Fetches org limits and a small Account result set in one request."
+          }
+        }
+      ]
+    }
+  ]
+}

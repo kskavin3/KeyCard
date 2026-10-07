@@ -149,7 +149,7 @@
         <div class="step-card">
           <p class="eyebrow">STEP 3 OF 5</p>
           <h2>Operations &amp; pricing</h2>
-          <p class="muted">Review the operations parsed from your spec. Enable or disable each one, set a per-call USD cost, and adjust the markup.</p>
+          <p class="muted">Review the operations parsed from your spec. Enable or disable each one, set a per-call ADA cost, and adjust the markup.</p>
 
           <div class="ops-toolbar">
             <div class="search-box">
@@ -160,7 +160,7 @@
               <button class="button quiet small" id="enable-all-ops" type="button">Enable all</button>
               <button class="button quiet small" id="disable-all-ops" type="button">Disable all</button>
               <span class="bulk-price-row">
-                Set all prices: <input type="number" id="bulk-price" placeholder="0.001" min="0.000001" step="0.000001" style="width:90px" />
+                Set all prices: <input type="number" id="bulk-price" placeholder="1.5" min="0.000001" step="0.000001" style="width:90px" />
                 <button class="button small" id="apply-bulk-price" type="button">Apply</button>
               </span>
             </div>
@@ -174,7 +174,7 @@
                   <th>Method</th>
                   <th>Path</th>
                   <th>Operation name</th>
-                  <th>USD cost</th>
+                  <th>ADA cost</th>
                   <th>Markup %</th>
                   <th>Enabled</th>
                 </tr>
@@ -200,7 +200,7 @@
           <p class="muted">ADA payments from agents go directly to this address. Create a fresh wallet, enter an existing Preprod address, or connect a browser wallet.</p>
 
           <div class="wallet-tabs" id="wallet-tabs">
-            <button class="wallet-tab active" data-tab="generate" type="button">Generate new wallet</button>
+            <button class="wallet-tab active" data-tab="generate" type="button">Create wallet safely</button>
             <button class="wallet-tab" data-tab="import" type="button">Use existing address</button>
             <button class="wallet-tab" data-tab="cip30" type="button">Connect browser wallet</button>
           </div>
@@ -212,9 +212,9 @@
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
               </div>
               <p class="wallet-gen-title">Create a dedicated Preprod payout wallet</p>
-              <p class="muted small">A BIP-39 mnemonic and Cardano Preprod address will be derived in your browser. The mnemonic never leaves this page.</p>
+              <p class="muted small">Use audited wallet software such as Lace or Eternl, or the KeyCard wallet CLI. KeyCard never generates or handles your recovery phrase.</p>
               <button class="button primary" id="generate-wallet-btn" type="button">
-                <span id="gen-btn-text">Generate wallet</span>
+                <span id="gen-btn-text">How to create a wallet</span>
                 <span class="spinner hidden" id="gen-spinner"></span>
               </button>
             </div>
@@ -334,7 +334,7 @@
               <span class="badge active" id="review-ops-count">0 enabled</span>
             </div>
             <table class="review-ops-table" id="review-ops-table">
-              <thead><tr><th>Method</th><th>Path</th><th>Name</th><th>Price (USD)</th><th>Markup</th></tr></thead>
+              <thead><tr><th>Method</th><th>Path</th><th>Name</th><th>Price (ADA)</th><th>Markup</th></tr></thead>
               <tbody id="review-ops-tbody"></tbody>
             </table>
           </div>
@@ -342,6 +342,10 @@
           <div class="publish-actions">
             <button class="button quiet" id="step5-back" type="button">← Back</button>
             <div class="publish-right">
+              <div class="form-field" style="min-width:210px">
+                <label for="dashboard-provider-id">Provider ID <span class="muted">(default if blank)</span></label>
+                <input type="text" id="dashboard-provider-id" autocomplete="username" />
+              </div>
               <div class="form-field" style="min-width:260px">
                 <label for="dashboard-pw">Dashboard password <span class="req">*</span></label>
                 <input type="password" id="dashboard-pw" autocomplete="current-password" placeholder="Required to publish" required />

@@ -1,3 +1,5 @@
+import { adaToLovelace, formatAda } from './money.js';
+
 /**
  * KeyCard Provider Onboarding Wizard
  * Handles: OpenAPI spec parsing, operations pricing table,
@@ -35,19 +37,11 @@ async function apiFetch(path, options = {}) {
   return data;
 }
 
-function usdToMicros(value) {
-  const match = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,6}))?$/.exec(String(value).trim());
-  if (!match) throw new Error('Enter a USD cost with at most 6 decimal places.');
-  const micros = BigInt(match[1]) * 1_000_000n + BigInt((match[2] || '').padEnd(6, '0') || '0');
-  if (micros <= 0n) throw new Error('Enter a positive USD cost.');
-  return micros.toString();
-}
-
 // ─── WIZARD STATE ─────────────────────────────────────────────
 const state = {
   currentStep: 1,
   parsedSpec: null,       // raw parsed OpenAPI object
-  operations: [],         // [{id, method, path, name, description, inputSchema, outputSchema, priceUsdMicros, markupBasisPoints, enabled}]
+  operations: [],         // [{id, method, path, name, description, inputSchema, outputSchema, priceAda, markupBasisPoints, enabled}]
   payoutAddress: null,
   mnemonic: null,
 };
@@ -272,7 +266,7 @@ function extractFromOpenAPI(spec) {
         path,
         inputSchema,
         outputSchema,
-        priceUsd: '0.001',
+        priceAda: '1.5',
         markupBasisPoints: 200,
         enabled: true,
       });
@@ -416,7 +410,7 @@ function buildOpsTable() {
       <td><span class="method-badge method-${esc(op.method)}">${esc(op.method)}</span></td>
       <td class="path-cell">${esc(op.path)}</td>
       <td>${esc(op.name)}</td>
-      <td><input type="number" class="op-price" data-id="${esc(op.id)}" value="${esc(op.priceUsd)}" min="0.000001" step="0.000001" /></td>
+      <td><input type="number" class="op-price" data-id="${esc(op.id)}" value="${esc(op.priceAda)}" min="0.000001" step="0.000001" /></td>
       <td><input type="number" class="op-markup" data-id="${esc(op.id)}" value="${esc(op.markupBasisPoints / 100)}" min="0" max="10000" step="0.01" /></td>
       <td><label class="toggle-switch"><input type="checkbox" class="op-enabled" data-id="${esc(op.id)}" ${op.enabled ? 'checked' : ''} /></label></td>
     `;
@@ -430,7 +424,7 @@ function buildOpsTable() {
     if (!id) return;
     const op = state.operations.find(o => o.id === id);
     if (!op) return;
-    if (e.target.classList.contains('op-price')) op.priceUsd = e.target.value;
+    if (e.target.classList.contains('op-price')) op.priceAda = e.target.value;
     if (e.target.classList.contains('op-markup')) op.markupBasisPoints = Math.round(Number(e.target.value) * 100);
     if (e.target.classList.contains('op-enabled')) op.enabled = e.target.checked;
     updateOpsCount();
@@ -466,7 +460,7 @@ document.querySelector('#disable-all-ops').addEventListener('click', () => {
 document.querySelector('#apply-bulk-price').addEventListener('click', () => {
   const price = document.querySelector('#bulk-price').value;
   if (!price) return;
-  state.operations.forEach(o => o.priceUsd = price);
+  state.operations.forEach(o => o.priceAda = price);
   document.querySelectorAll('.op-price').forEach(inp => inp.value = price);
 });
 
@@ -496,65 +490,6 @@ document.querySelectorAll('.wallet-tab').forEach(tab => {
   });
 });
 
-// ─── BIP39 Mnemonic generation (no external library) ──────────
-// Uses Web Crypto to generate entropy and maps to BIP39 wordlist.
-// We embed a minimal subset of BIP39 generation logic using PBKDF2 + SHA-256.
-
-const BIP39_WORDLIST_URL = 'https://raw.githubusercontent.com/bitcoinjs/bip39/master/src/wordlists/english.json';
-let wordlistCache = null;
-async function getBip39Words() {
-  if (wordlistCache) return wordlistCache;
-  try {
-    const res = await fetch(BIP39_WORDLIST_URL);
-    wordlistCache = await res.json();
-    return wordlistCache;
-  } catch {
-    // Fallback: generate a deterministic label set so UX doesn't break
-    return Array.from({ length: 2048 }, (_, i) => `word${i}`);
-  }
-}
-
-async function generateMnemonic(strength = 256) {
-  const words = await getBip39Words();
-  const entropy = new Uint8Array(strength / 8);
-  crypto.getRandomValues(entropy);
-
-  // SHA-256 checksum
-  const hashBuf = await crypto.subtle.digest('SHA-256', entropy);
-  const hash = new Uint8Array(hashBuf);
-  const checksumBits = strength / 32;
-
-  // Convert entropy+checksum to bit string
-  let bits = '';
-  for (const byte of entropy) bits += byte.toString(2).padStart(8, '0');
-  for (let i = 0; i < checksumBits; i++) bits += ((hash[0] >> (7 - i)) & 1).toString();
-
-  const mnemonic = [];
-  for (let i = 0; i < bits.length / 11; i++) {
-    const idx = parseInt(bits.slice(i * 11, (i + 1) * 11), 2);
-    mnemonic.push(words[idx]);
-  }
-  return mnemonic.join(' ');
-}
-
-// Derive a Cardano Preprod-format bech32 address prefix stub
-// Real implementation needs full CSL; here we generate a realistic-looking
-// addr_test1 address from a SHA-256 hash of the mnemonic for demo purposes.
-// In production, replace with @x402/cardano or @meshsdk/core derivation.
-async function deriveAddressFromMnemonic(mnemonic) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', enc.encode(mnemonic), { name: 'PBKDF2' }, false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt: enc.encode('keycard-cardano-preprod'), iterations: 100_000, hash: 'SHA-256' },
-    key, 256
-  );
-  const bytes = new Uint8Array(bits);
-  // Encode as bech32-like addr_test1... (hex representation for demo)
-  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  // Real Cardano addresses are bech32-encoded; prefix addr_test1 for Preprod
-  return 'addr_test1' + hex.slice(0, 51);
-}
-
 async function checkAdaBalance(address) {
   const projectId = window.__BLOCKFROST_PROJECT_ID__ ?? '';
   if (!projectId) {
@@ -575,10 +510,7 @@ async function checkAdaBalance(address) {
 }
 
 function formatLovelace(lovelace) {
-  if (lovelace === null) return '— ADA (check manually)';
-  const ada = lovelace / 1_000_000n;
-  const frac = (lovelace % 1_000_000n).toString().padStart(6, '0');
-  return `${ada}.${frac} ADA`;
+  return formatAda(lovelace);
 }
 
 function setPayoutAddress(address) {
@@ -593,38 +525,7 @@ function setFaucetLinks(address) {
 
 // Generate wallet
 document.querySelector('#generate-wallet-btn').addEventListener('click', async () => {
-  const btn = document.querySelector('#generate-wallet-btn');
-  const spinner = document.querySelector('#gen-spinner');
-  const btnText = document.querySelector('#gen-btn-text');
-  btn.disabled = true; spinner.classList.remove('hidden'); btnText.textContent = 'Generating…';
-
-  try {
-    state.mnemonic = await generateMnemonic(256);
-    const address = await deriveAddressFromMnemonic(state.mnemonic);
-
-    document.querySelector('#wallet-address').textContent = address;
-    document.querySelector('#wallet-result').hidden = false;
-
-    // Populate mnemonic grid
-    const words = state.mnemonic.split(' ');
-    const grid = document.querySelector('#mnemonic-words');
-    grid.innerHTML = words.map((w, i) =>
-      `<div class="mnemonic-word"><span class="word-num">${i + 1}</span>${esc(w)}</div>`
-    ).join('');
-
-    setPayoutAddress(address);
-    setFaucetLinks(address);
-
-    // Try balance
-    const bal = await checkAdaBalance(address);
-    document.querySelector('#wallet-balance').textContent = formatLovelace(bal ?? 0n);
-
-    btnText.textContent = 'Regenerate wallet'; btn.disabled = false; spinner.classList.add('hidden');
-    announce('Wallet generated! Please back up your recovery phrase.');
-  } catch (e) {
-    announce('Wallet generation failed: ' + e.message, true);
-    btnText.textContent = 'Generate wallet'; btn.disabled = false; spinner.classList.add('hidden');
-  }
+  announce('Create a Preprod wallet in Lace, Eternl, or the KeyCard wallet CLI, then connect it or paste its payout address.', true);
 });
 
 document.querySelector('#refresh-balance-btn').addEventListener('click', async () => {
@@ -657,9 +558,8 @@ document.querySelector('#download-mnemonic-btn').addEventListener('click', () =>
 // Use existing address
 document.querySelector('#use-existing-btn').addEventListener('click', async () => {
   const address = document.querySelector('#existing-address').value.trim();
-  if (!address.startsWith('addr_test1')) {
-    announce('Address must start with addr_test1 (Cardano Preprod).', true); return;
-  }
+  try { await apiFetch('/api/cardano/validate-address', { method: 'POST', body: JSON.stringify({ address }) }); }
+  catch (error) { announce(error.message, true); return; }
 
   document.querySelector('#existing-wallet-address').textContent = address;
   document.querySelector('#existing-wallet-result').hidden = false;
@@ -667,7 +567,7 @@ document.querySelector('#use-existing-btn').addEventListener('click', async () =
   setFaucetLinks(address);
 
   const bal = await checkAdaBalance(address);
-  document.querySelector('#existing-wallet-balance').textContent = formatLovelace(bal ?? 0n);
+  document.querySelector('#existing-wallet-balance').textContent = formatLovelace(bal);
   announce('Address set. You can now continue.');
 });
 
@@ -680,6 +580,33 @@ document.querySelector('#existing-refresh-btn').addEventListener('click', async 
 
 // CIP-30 browser wallet detection
 const CIP30_KNOWN = ['nami', 'eternl', 'flint', 'lace', 'gerowallet', 'typhoncip30', 'yoroi', 'vespr'];
+const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+function bech32Polymod(values) {
+  const generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+  let checksum = 1;
+  for (const value of values) {
+    const top = checksum >>> 25;
+    checksum = ((checksum & 0x1ffffff) << 5) ^ value;
+    generators.forEach((generator, index) => { if ((top >>> index) & 1) checksum ^= generator; });
+  }
+  return checksum;
+}
+function bech32Address(hex) {
+  if (!/^[0-9a-f]+$/i.test(hex) || hex.length % 2) throw new Error('Wallet returned an invalid address.');
+  const bytes = Uint8Array.from(hex.match(/../g).map(value => Number.parseInt(value, 16)));
+  if ((bytes[0] & 0x0f) !== 0) throw new Error('Connect a Cardano Preprod wallet.');
+  const words = []; let accumulator = 0; let bits = 0;
+  for (const byte of bytes) {
+    accumulator = (accumulator << 8) | byte; bits += 8;
+    while (bits >= 5) { bits -= 5; words.push((accumulator >>> bits) & 31); }
+  }
+  if (bits) words.push((accumulator << (5 - bits)) & 31);
+  const hrp = 'addr_test';
+  const expanded = [...hrp].map(c => c.charCodeAt(0) >>> 5).concat([0], [...hrp].map(c => c.charCodeAt(0) & 31));
+  const polymod = bech32Polymod(expanded.concat(words, [0, 0, 0, 0, 0, 0])) ^ 1;
+  const checksum = Array.from({ length: 6 }, (_, index) => (polymod >>> (5 * (5 - index))) & 31);
+  return `${hrp}1${words.concat(checksum).map(value => BECH32_CHARSET[value]).join('')}`;
+}
 function scanCip30Wallets() {
   const container = document.querySelector('#cip30-wallets');
   const none = document.querySelector('#cip30-none');
@@ -700,17 +627,15 @@ function scanCip30Wallets() {
     btn.addEventListener('click', async () => {
       try {
         const api = await wallet.enable();
-        const addrHex = (await api.getChangeAddress());
-        // Decode from hex to bech32 — for real implementation use CSL
-        // Here we use the hex address as a stand-in
-        const address = addrHex.startsWith('addr') ? addrHex : `addr_test1${addrHex.slice(0, 51)}`;
+        const addrHex = await api.getChangeAddress();
+        const address = addrHex.startsWith('addr_test1') ? addrHex : bech32Address(addrHex);
+        await apiFetch('/api/cardano/validate-address', { method: 'POST', body: JSON.stringify({ address }) });
         document.querySelector('#cip30-address').textContent = address;
         document.querySelector('#cip30-wallet-result').hidden = false;
         setPayoutAddress(address);
         setFaucetLinks(address);
-        const lovelace = await api.getBalance();
-        const lovelaceBig = BigInt('0x' + lovelace);
-        document.querySelector('#cip30-balance').textContent = formatLovelace(lovelaceBig);
+        const balance = await checkAdaBalance(address);
+        document.querySelector('#cip30-balance').textContent = formatLovelace(balance);
         announce(`Connected to ${wallet.name ?? name}.`);
       } catch (e) {
         announce(`Could not connect to ${name}: ${e.message}`, true);
@@ -773,7 +698,7 @@ function populateReview() {
       <td><span class="method-badge method-${esc(op.method)}">${esc(op.method)}</span></td>
       <td>${esc(op.path)}</td>
       <td>${esc(op.name)}</td>
-      <td>$${esc(op.priceUsd)}</td>
+      <td>₳ ${esc(op.priceAda)}</td>
       <td>${(op.markupBasisPoints / 100).toFixed(2)}%</td>
     </tr>
   `).join('');
@@ -792,8 +717,9 @@ document.querySelector('#publish-btn').addEventListener('click', async () => {
 
   try {
     // Sign in
+    const providerId = document.querySelector('#dashboard-provider-id').value.trim();
     await apiFetch('/api/provider/session', {
-      method: 'POST', body: JSON.stringify({ password: pw }),
+      method: 'POST', body: JSON.stringify({ password: pw, ...(providerId ? { providerId } : {}) }),
     });
 
     const enabledOps = state.operations.filter(o => o.enabled);
@@ -808,7 +734,7 @@ document.querySelector('#publish-btn').addEventListener('click', async () => {
       path: op.path,
       inputSchema: op.inputSchema ?? { type: 'object', properties: {}, additionalProperties: false },
       outputSchema: op.outputSchema ?? { type: 'object', additionalProperties: true },
-      priceUsdMicros: usdToMicros(op.priceUsd),
+      priceLovelace: adaToLovelace(op.priceAda),
       markupBasisPoints: Math.max(0, Math.min(1_000_000, op.markupBasisPoints)),
       enabled: true,
     }));
@@ -842,7 +768,7 @@ document.querySelector('#publish-btn').addEventListener('click', async () => {
     // Success
     document.querySelector('#success-listing-id').textContent = result.listingId;
     document.querySelector('#success-proxy-url').textContent =
-      `${window.location.origin}/api/proxy/${encodeURIComponent(result.listingId)}`;
+      result.proxyEndpoints?.[0]?.proxyUrl ?? 'No enabled proxy endpoint returned.';
     document.querySelector('#success-op-count').textContent = result.operationIds?.length ?? operations.length;
 
     showStep('success');

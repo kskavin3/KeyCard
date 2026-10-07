@@ -9,10 +9,9 @@ exercise real Cardano CBOR decoding against Blockfrost response fixtures.
 
 Start PostgreSQL with `docker compose up -d postgres`. Fill `.env` using
 `.env.example`, including the dashboard/session/encryption secrets,
-`KEYCARD_PAY_TO` (a provider-controlled Preprod address), `FREECRYPTOAPI_API_KEY`, and
-`BLOCKFROST_PROJECT_ID`. ADA/USD quotes use FreeCryptoAPI’s explicit
-`/getConversion?from=ADA&to=USD&amount=1` endpoint with Bearer authentication;
-fresh results are cached for at most 60 seconds. Start the server with `npm run dev:api`; startup applies
+`KEYCARD_PAY_TO` (a provider-controlled Preprod address) and
+`BLOCKFROST_PROJECT_ID`. Listing prices and quotes use canonical integer lovelace
+amounts without an exchange-rate dependency. Start the server with `npm run dev:api`; startup applies
 additive schema changes. Register a provider listing and check its preview before
 paying. Current quotes use a configured 1.5 ADA output floor by default; the wallet
 SDK uses live protocol parameters and refuses outputs below the chain minimum.
@@ -142,6 +141,5 @@ record the receipt and result, verify its explorer transaction, and repeat the s
 command to confirm the receipt/result stay identical and only one transfer exists.
 Reconcile the earlier confirmed-but-402 payment separately; do not charge again.
 
-References: [Cardano exact scheme](https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_cardano.md),
-[Blockfrost API](https://docs.blockfrost.io/),
-[FreeCryptoAPI documentation](https://freecryptoapi.com/documentation/).
+References: [Cardano exact scheme](https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_cardano.md) and
+[Blockfrost API](https://docs.blockfrost.io/).

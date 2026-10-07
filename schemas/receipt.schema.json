@@ -5,11 +5,12 @@
   "description": "Public durable call state and direct-payout/refund accounting; excludes signed payload and secret idempotency key.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["receiptId", "requestHash", "state", "transaction", "network", "amountLovelace", "payTo", "paymentConfirmed", "payoutStatus", "refundStatus", "refundTransaction"],
+  "required": ["receiptId", "requestHash", "state", "authorizationMethod", "transaction", "network", "amountLovelace", "payTo", "paymentConfirmed", "payoutStatus", "refundStatus", "refundTransaction"],
   "properties": {
     "receiptId": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "requestHash": { "$ref": "common.schema.json#/$defs/sha256" },
     "state": { "enum": ["quoted", "verified", "executing", "result_ready", "settling", "completed", "failed", "review"] },
+    "authorizationMethod": { "enum": ["payment", "sponsorship"] },
     "transaction": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
     "network": { "const": "cardano:preprod" },
     "amountLovelace": { "$ref": "common.schema.json#/$defs/lovelaceAmount" },

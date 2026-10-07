@@ -23,7 +23,14 @@ export class WalletJournal {
         await rename(temp, this.path);
         // Persist the rename before submitting a signed transaction.
         const directory = await open(this.directory, 'r');
-        try { await directory.sync(); } finally { await directory.close(); }
+        try {
+          await directory.sync().catch(error => {
+            // Windows does not support fsync on directory handles. The file was
+            // already flushed before the atomic rename, which is the strongest
+            // portable durability guarantee available there.
+            if (process.platform !== 'win32' || !['EPERM', 'EINVAL', 'EBADF'].includes(error.code)) throw error;
+          });
+        } finally { await directory.close(); }
       });
     } finally { await lock.close(); await unlink(join(this.directory, 'wallet.lock')); }
   }

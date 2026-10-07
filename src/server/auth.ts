@@ -22,10 +22,10 @@ function timingSafeStringEqual(left: string, right: string) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function createProviderSession(res: Response) {
+export function createProviderSession(res: Response, providerId: string) {
   const expiresAt = Math.floor(Date.now() / 1000) + sessionLifetimeSeconds;
   const payload = Buffer.from(JSON.stringify({
-    providerId: process.env.KEYCARD_PROVIDER_ID ?? 'provider-demo',
+    providerId,
     expiresAt,
     nonce: randomBytes(16).toString('hex'),
   })).toString('base64url');
@@ -57,7 +57,7 @@ export function requireProviderSession(req: Request, res: Response, next: NextFu
 
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    if (data.providerId !== (process.env.KEYCARD_PROVIDER_ID ?? 'provider-demo') || data.expiresAt <= Date.now() / 1000) {
+    if (typeof data.providerId !== 'string' || !data.providerId || data.expiresAt <= Date.now() / 1000) {
       return res.status(401).json({ error: 'Session expired.' });
     }
     res.locals.providerId = data.providerId as string;

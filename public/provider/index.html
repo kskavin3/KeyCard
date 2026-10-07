@@ -23,6 +23,7 @@
         <h1>Manage your API listings.</h1>
         <p class="muted">Sign in to register an upstream API, configure its paid operations, and check the proxy.</p>
         <form id="sign-in-form" class="stack">
+          <label>Provider ID <span class="muted">(leave blank for default)</span><input name="providerId" autocomplete="username" /></label>
           <label>Dashboard password<input name="password" type="password" autocomplete="current-password" required /></label>
           <button class="button primary" type="submit">Sign in</button>
         </form>
@@ -36,7 +37,7 @@
         </div>
 
         <div class="columns">
-          <section class="panel">
+          <section class="panel" id="register-api">
             <p class="eyebrow">NEW OR UPDATED LISTING</p>
             <h2>Register an API</h2>
             <form id="listing-form" class="stack">
@@ -47,6 +48,7 @@
               <label>Description<textarea name="description" rows="2" required placeholder="A short explanation of what this API returns."></textarea></label>
               <label>Capabilities <span class="muted">(comma separated)</span><input name="capabilities" placeholder="weather, forecast" required /></label>
               <label>Upstream HTTPS origin<input name="baseUrl" type="url" placeholder="https://api.example.com" required /></label>
+              <label>Cardano Preprod payout address<input name="payoutAddress" placeholder="addr_test1…" required /></label>
               <div class="three-up">
                 <label>Credential location<select name="authMode"><option value="header">HTTP header</option><option value="query">Query parameter</option></select></label>
                 <label>Header or parameter<input name="authField" placeholder="x-api-key" required /></label>
@@ -59,7 +61,7 @@
               <div class="three-up">
                 <label>Method<select name="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
                 <label>Upstream path<input name="path" value="/" required /></label>
-                <label>Provider cost (USD)<input name="cost" type="number" min="0.000001" step="0.000001" value="0.001" required /></label>
+                <label>Provider cost (ADA)<input name="cost" type="number" min="0.000001" step="0.000001" value="1.5" required /></label>
               </div>
               <label>Operation description<input name="operationDescription" placeholder="Returns current conditions for a location." required /></label>
               <div class="two-up">
@@ -70,7 +72,7 @@
             </form>
           </section>
 
-          <aside class="panel side-panel">
+          <aside class="panel side-panel" id="preview-call">
             <p class="eyebrow">UPSTREAM CHECK</p>
             <h2>Preview a call</h2>
             <p class="muted small">This preview is provider-only and does not charge an agent. Use the saved listing and operation IDs.</p>
@@ -84,14 +86,14 @@
           </aside>
         </div>
 
-        <section class="panel listing-panel">
+        <section class="panel listing-panel" id="payments">
           <div class="section-heading"><div><p class="eyebrow">PAYMENTS</p><h2>Earnings and payouts</h2></div><button id="refresh-payments" class="button quiet">Refresh</button></div>
           <p class="muted small">ADA goes directly to your payout address. Confirmed payments for failed calls require a full service refund; network fees remain with the network.</p>
           <p id="earnings-summary" class="muted">Loading earnings…</p>
           <div id="payment-list" class="listing-list"></div>
         </section>
 
-        <section class="panel listing-panel">
+        <section class="panel listing-panel" id="listings">
           <div class="section-heading"><div><p class="eyebrow">YOUR CATALOG</p><h2>Listings</h2></div><button id="refresh-listings" class="button quiet">Refresh</button></div>
           <div id="listing-list" class="listing-list"><p class="muted">Loading listings…</p></div>
         </section>

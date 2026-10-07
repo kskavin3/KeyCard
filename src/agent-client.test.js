@@ -21,7 +21,7 @@ test('wallet init and info use actual Cardano signer; secrets stay in owner-only
     const env={...process.env,KEYCARD_AGENT_WALLET_DIR:directory,BLOCKFROST_PROJECT_ID:''};
     const output=execFileSync(process.execPath,['scripts/agent-wallet.mjs','init','2000000','10000000'],{env,encoding:'utf8'});
     assert.equal(output.includes(await readFile(join(directory,'mnemonic'),'utf8')),false);
-    assert.equal((await stat(join(directory,'mnemonic'))).mode & 0o777,0o600);
+    if (process.platform !== 'win32') assert.equal((await stat(join(directory,'mnemonic'))).mode & 0o777,0o600);
     const info=JSON.parse(execFileSync(process.execPath,['scripts/agent-wallet.mjs','info'],{env,encoding:'utf8'}));
     assert.ok(info.address.startsWith('addr_test1')); assert.equal(info.network,'cardano:preprod');
     assert.equal(info.limits.maxCallLovelace,'2000000');
